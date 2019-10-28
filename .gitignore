@@ -1,3 +1,6 @@
+# MacOS Finder
+.DS_Store
+
 # Prerequisites
 *.d
 
@@ -35,6 +38,8 @@
 *.i*86
 *.x86_64
 *.hex
+client
+http_server
 
 # Debug files
 *.dSYM/
