@@ -1,0 +1,61 @@
+{
+    "editor.fontFamily": "Source Code Pro",
+    "editor.fontSize": 16,
+    "workbench.colorTheme": "One Dark Pro Vivid",
+    "workbench.fontAliasing": "auto",
+    "editor.cursorWidth": 90,
+    "editor.rulers": [
+        90
+    ],
+    "markdownlint.config": {
+        "MD013": false,
+        "MD007": {
+            "indent": 4
+        }
+    },
+    "markdown.extension.toc.unorderedList.marker": "*",
+    "window.nativeTabs": true,
+    "terminal.integrated.cursorBlinking": true,
+    "breadcrumbs.enabled": true,
+    "markdown.extension.print.absoluteImgPath": false,
+    "python.pythonPath": "/Users/apple/anaconda3/bin/python",
+    "python.jediEnabled": false,
+    "python.linting.pylintEnabled": true,
+    "markdown.extension.tableFormatter.normalizeIndentation": true,
+    "markdown.extension.toc.githubCompatibility": true,
+    "markdown.extension.showExplorer": true,
+    "markdown.preview.fontFamily": "-apple-system, 'Source Code Pro', BlinkMacSystemFont, 'Segoe WPC', 'Segoe UI', 'HelveticaNeue-Light', 'Ubuntu', 'Droid Sans', sans-serif",
+    "editor.cursorStyle": "line-thin",
+    "indentRainbow.indentSetter": {
+        "javascript": {
+            "tabSize": 2,
+            "insertSpaces": false
+        },
+        "json": {
+            "tabSize": 2,
+            "insertSpaces": false
+        },
+        "html": {
+            "tabSize": 1,
+            "insertSpaces": false
+        }
+    },
+    "indentRainbow.excludedLanguages": [
+        "plaintext",
+        "html"
+    ],
+    "C_Cpp.clang_format_style": "{ BasedOnStyle: Chromium, IndentWidth: 4}",
+    "git.autofetch": true,
+    "C_Cpp.updateChannel": "Insiders",
+    "editor.wordWrap": "wordWrapColumn",
+    "[html]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "editor.formatOnPaste": true,
+    "editor.multiCursorModifier": "ctrlCmd",
+    "editor.snippetSuggestions": "top",
+    "vsicons.dontShowNewVersionMessage": true,
+    "C_Cpp.clang_format_sortIncludes": false,
+    "editor.renderControlCharacters": true,
+    "window.zoomLevel": 0
+}
