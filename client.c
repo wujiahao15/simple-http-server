@@ -13,7 +13,7 @@ int main() {
     // create socket
     int sockfd;
     if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        log(ERROR,"create socket failed");
+        logger(ERROR,"create socket failed");
     }
     // prepare for connection
     struct sockaddr_in addr;
@@ -22,22 +22,22 @@ int main() {
     addr.sin_addr.s_addr = inet_addr("127.0.0.1");
     addr.sin_port = htons(PORT);
     if (connect(sockfd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-        log(ERROR,"Connection failed in client");
+        logger(ERROR,"Connection failed in client");
     }
 
-    log(DEBUG, "Server connected.");
+    logger(DEBUG, "Server connected.");
     // send message to server
     char snd[] = "Msg from client!";
     if (write(sockfd, snd, sizeof(snd)) < 0) {
-        log(ERROR,"write failed");
+        logger(ERROR,"write failed");
     }
-    log(DEBUG, "send message to server!");
+    logger(DEBUG, "send message to server!");
     // receive message from server
     char buff[100];
     if (read(sockfd, buff, 17) < 0) {
-        log(ERROR,"read failed");
+        logger(ERROR,"read failed");
     }
-    log(DEBUG, "%s", buff);
+    logger(DEBUG, "%s", buff);
     // close socket
     close(sockfd);
     return 0;
