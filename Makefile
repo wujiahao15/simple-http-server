@@ -1,8 +1,8 @@
 all: http_server client
-# LIBS = -lsocket#-lpthread #
+LIBS = -lpthread #-lsocket#-lpthread #
 http_server: http_server.c
-	gcc -g -W -Wall -o $@ $<
-	# gcc -g -W -Wall $(LIBS) -o $@ $<
+	# gcc -g -W -Wall -o $@ $<
+	gcc -g -W -Wall $(LIBS) -o $@ $<
 
 client: client.c
 	gcc -W -Wall -o $@ $<
