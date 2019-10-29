@@ -132,7 +132,7 @@ void send_response_headers(int client, const char* filename) {
     logger(DEBUG, "HTTP/1.0 200 OK");
     strcpy(buf, SERVER_STRING);
     send(client, buf, strlen(buf), 0);
-    logger(DEBUG, SERVER_STRING);
+    logger(DEBUG, SERVER_BASE_STR);
     sprintf(buf, "Content-Type: text/html\r\n");
     send(client, buf, strlen(buf), 0);
     logger(DEBUG, "Content-Type: text/html");
@@ -210,7 +210,7 @@ void accept_request_handler(void* arg) {
     sprintf(path, "htmldoc%s", url);
     if (path[strlen(path) - 1] == '/')
         strcat(path, "index.html");
-    logger(DEBUG, "path: %s", path);
+    // logger(DEBUG, "path: %s", path);
     if (stat(path, &st) == -1) {  // get file information failed
         // read and discard the remaining headers
         while ((str_len > 0) && strcmp("\n", buf))
