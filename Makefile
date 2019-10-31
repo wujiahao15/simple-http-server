@@ -1,10 +1,10 @@
-all: http_server client
-LIBS = -lpthread #-lsocket#-lpthread #
-http_server: http_server.c
-	# gcc -g -W -Wall -o $@ $<
-	gcc -g -W -Wall $(LIBS) -o $@ $<
+all: wuw_server 
+LIBS = -lpthread #-lsocket
+SRCDIR = src
+SRCS := $(shell find $(SRCDIR) -name "*.c")
 
-client: client.c
-	gcc -W -Wall -o $@ $<
+wuw_server: 
+	gcc -W -Wall $(LIBS) -o $@ ${SRCS}
+
 clean:
-	rm http_server client
+	rm wuw_server
