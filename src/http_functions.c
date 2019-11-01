@@ -163,7 +163,10 @@ void send_file_to_client(int client, char* filename) {
     fclose(fp);
 }
 
-void recv_file_from_client(int sockfd, char* path) {}
+void recv_file_from_client(int sockfd, char* path) {
+    logger(DEBUG, "receiving file from client.");
+    http_internal_server_error(sockfd);
+}
 
 void get_file_path_on_server(char* path, char* url) {
     if (!strcmp("/", url))
@@ -226,6 +229,7 @@ void accept_request_handler(void* arg) {
             break;
 
         case POST:
+            recv_file_from_client(client, path);
             break;
         default:
             http_not_implemented(client);
