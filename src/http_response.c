@@ -4,13 +4,14 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 
 #define MAX_BUFF_SIZE (1 << 10)
 
 void format_and_send_response(int sockfd, const char* msg) {
     char buf[MAX_BUFF_SIZE];
     strcpy(buf, msg);
-    logger(DEBUG, "%s", msg);
+    logger(DEBUG, "%s\\r\\n", msg);
     strcat(buf, "\r\n");
     send(sockfd, buf, strlen(buf), 0);
 }
@@ -24,14 +25,16 @@ void http_ok(int client) {
     format_and_send_response(client, "");
 }
 
-void http_ok_length(int client, char* filename) {
+void http_ok_send_file(int client, int len) {
     // TODO: could use filename to determine file type
-    (void)filename;
-    logger(DEBUG, "sending response headers");
+    logger(DEBUG, "sending response headers of sending file");
     // send response back to client
     format_and_send_response(client, "HTTP/1.0 200 OK");
     format_and_send_response(client, SERVER_BASE_STR);
-    format_and_send_response(client, "Content-Type: text/html");
+    format_and_send_response(client, "Content-Type: application/octet-stream");
+    char buf[MAX_BUFF_SIZE];
+    sprintf(buf, "Content-Length: %d", len);
+    format_and_send_response(client, buf);
     format_and_send_response(client, "");
 }
 

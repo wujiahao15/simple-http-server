@@ -26,8 +26,18 @@
 #define MAX_LINE_LEN 1024
 
 // html strings
-#define HTML_BEFORE_BODY "<html><title>WUW Web Server Main Page</title><body><p>Welcome to Wu Jiahao's web server!</p>"
-#define HTML_AFTER_BODY "<form method=\"POST\" enctype=\"multipart/form-data\"><input type=\"file\"><button type=\"submit\">upload</button></form></body></html>"
+#define HTML_BEFORE_BODY                      \
+    "<html>"                                  \
+    "<title>WUW Web Server Main Page</title>" \
+    "<body>"                                  \
+    "<p>Welcome to Wu Jiahao's web server!</p>"
+#define HTML_AFTER_BODY                                      \
+    "<form method=\"POST\" enctype=\"multipart/form-data\">" \
+    "<input type=\"file\">"                                  \
+    "<button type=\"submit\">upload</button>"                \
+    "</form>"                                                \
+    "</body>"                                                \
+    "</html>"
 
 // function define
 #define isSpace(x) isspace((int)(x))
@@ -37,8 +47,8 @@ enum http_method {
     NOT_IMPLEMENT = -1,
     GET,
     POST,
-    /* 
-       the below methods 
+    /*
+       the below methods
        are not implemented.
     */
     HEAD,

@@ -100,27 +100,27 @@ void send_directory_to_client(int client, char* directory) {
 
     http_ok(client);
 
-    int sz = 0, w = 0;
+    int sz = 0;
     char buffer[MAX_LINE_LEN];
     struct dirent* myDir = NULL;
-    sz = sprintf(buffer, HTML_BEFORE_BODY "\r\n");
-    while(send(client, buffer, sz, 0) != (int)strlen(buffer));
-    logger(DEBUG, HTML_BEFORE_BODY);
+    sz = sprintf(buffer, "%s", HTML_BEFORE_BODY);
+    send(client, buffer, sz, 0);
+    logger(DEBUG, "%s", buffer);
     while ((myDir = readdir(dir)) != NULL) {
-        // skip '.' and ".." in current directory
+        // ignore '.' and ".." in current directory
         if (strcmp(myDir->d_name, "..") && strcmp(myDir->d_name, ".")) {
-            sz = sprintf(buffer, "<a href=\"%s/%s\">%s</a><br/>\r\n", directory,
+            sz = sprintf(buffer, "<a href=\"%s/%s\">%s</a><br />", directory,
                          myDir->d_name, myDir->d_name);
-            logger(DEBUG, "<a href=\"%s/%s\">%s</a><br/>", directory,
-                   myDir->d_name, myDir->d_name);
-            while(send(client, buffer, sz, 0) != (int)strlen(buffer));
+            while (send(client, buffer, sz, 0) != sz)
+                ;
+            logger(DEBUG, "%s", buffer);
         }
     }
-    sz = sprintf(buffer, HTML_AFTER_BODY "\r\n");
-    while(send(client, buffer, sz, 0) != (int)strlen(buffer));
-    logger(DEBUG, HTML_AFTER_BODY);
-    sz = sprintf(buffer, "\r\n");
-    while(send(client, buffer, sz, 0) != (int)strlen(buffer));
+    sz = sprintf(buffer, "%s", HTML_AFTER_BODY);
+    send(client, buffer, sz, 0);
+    logger(DEBUG, "%s", buffer);
+    // sz = sprintf(buffer, "\r\n");
+    // while(send(client, buffer, sz, 0) != (int)strlen(buffer));
     closedir(dir);
 }
 
@@ -129,7 +129,6 @@ void send_file(int client, FILE* fp) {
     fgets(buf, sizeof(buf), fp);
     while (!feof(fp)) {
         send(client, buf, strlen(buf), 0);
-        logger(DEBUG, "%s", buf);
         fgets(buf, sizeof(buf), fp);
     }
 }
@@ -147,8 +146,16 @@ void send_file_to_client(int client, char* filename) {
         // logger(DEBUG, "read and discard headers");
     }
 
+    logger(DEBUG, "GET %s", filename);
+
     if ((fp = fopen(filename, "r")) != NULL) {
-        http_ok(client);
+        struct stat st;
+        if (stat(filename, &st) == -1) {
+            fclose(fp);
+            http_internal_server_error(client);
+            return;
+        }
+        http_ok_send_file(client, st.st_size);
         send_file(client, fp);
     } else
         http_not_found(client);
@@ -157,6 +164,13 @@ void send_file_to_client(int client, char* filename) {
 }
 
 void recv_file_from_client(int sockfd, char* path) {}
+
+void get_file_path_on_server(char* path, char* url) {
+    if (!strcmp("/", url))
+        strcpy(path, "htdocs");
+    else
+        strcpy(path, url + 1);
+}
 
 void accept_request_handler(void* arg) {
     int client = (intptr_t)arg;
@@ -173,6 +187,7 @@ void accept_request_handler(void* arg) {
     if (http_hdr.mode == NOT_IMPLEMENT) {
         logger(DEBUG, "Method [%s] not implemented.", http_hdr.method);
         http_not_implemented(client);
+        close(client);
         return;
     }
     logger(DEBUG, "Method: %s", http_hdr.method);
@@ -183,10 +198,7 @@ void accept_request_handler(void* arg) {
 
     // get the file of the main page of html
     char path[MAX_PATH_LEN];
-    if (!strcmp("/", http_hdr.url))
-        sprintf(path, "htdocs");
-    else
-        strcpy(path, http_hdr.url);
+    get_file_path_on_server(path, http_hdr.url);
     // if (path[strlen(path) - 1] == '/')
     //     strcat(path, "index.html");
     // logger(DEBUG, "path: %s", path);
@@ -197,25 +209,27 @@ void accept_request_handler(void* arg) {
             recv_bytes = get_line_from_socket(client, buf);
         // 404 not found
         http_not_found(client);
-    } else {
-        logger(DEBUG, "access path: %s", path);
-        // if path is directory,
-        // automatically use index.html under this folder
-        if ((st.st_mode & S_IFMT) == S_IFDIR) {
-            send_directory_to_client(client, path);
-        } else {
-            // if ((st.st_mode & S_IXUSR) || (st.st_mode & S_IXGRP) ||
-            //     (st.st_mode & S_IXOTH)) {
-            if (http_hdr.mode == GET) {
-                // if (show_dir)
-                // send_directory_to_client(client, path);
-                // else
+        close(client);
+        return;
+    }
+    logger(DEBUG, "access path: %s", path);
+    switch (http_hdr.mode) {
+        case GET:
+            // if path is directory,
+            // automatically use index.html under this folder
+            if ((st.st_mode & S_IFMT) == S_IFDIR)
+                send_directory_to_client(client, path);
+            else if ((st.st_mode & S_IFMT) == S_IFREG)
                 send_file_to_client(client, path);
-            } else {
-                recv_file_from_client(client, path);
-            }
-        }
-        // }
+            else
+                http_not_found(client);
+            break;
+
+        case POST:
+            break;
+        default:
+            http_not_implemented(client);
+            break;
     }
 
     close(client);

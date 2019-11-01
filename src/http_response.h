@@ -30,6 +30,7 @@
     declarations of functions
  */
 void http_ok(int client);
+void http_ok_send_file(int client, int len);
 void http_not_found(int client);
 
 void http_not_implemented(int client);
