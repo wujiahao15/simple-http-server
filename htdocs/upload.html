@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Upload File</title>
+  <script type="text/javascript">
+    function fileSelected() {
+      var file = document.getElementById('fileToUpload').files[0];
+      if (file) {
+        document.getElementById('fileName').innerHTML = 'Name: ' + file.name;
+        document.getElementById('fileSize').innerHTML = 'Size: ' + file.size + ' bytes';
+      }
+    }
+
+    function uploadFile() {
+      var fd = new FormData();
+      var file = document.getElementById('fileToUpload').files[0];
+      fd.append("fileToUpload", file);
+      var xhr = new XMLHttpRequest();
+      xhr.addEventListener("load", uploadComplete, false);
+      xhr.addEventListener("error", uploadFailed, false);
+      xhr.addEventListener("abort", uploadCanceled, false);
+      xhr.open("POST", "/resources/" + file.name);
+      xhr.send(fd);
+    }
+
+    function uploadComplete(evt) {
+        /* This event is raised when the server send back a response */
+        // alert(evt.target.responseText);
+        alert("文件上传完毕！");
+      }
+
+    function uploadFailed(evt) {
+      alert("There was an error attempting to upload the file.");
+    }
+
+    function uploadCanceled(evt) {
+      alert("The upload has been canceled by the user or the browser dropped the connection.");
+    }
+  </script>
+</head>
+
+<body>
+  <h1>Select a file to upload</h1>
+  <form id="uploadForm" enctype="multipart/form-data" method="post" >
+    <div class="row">
+      <input type="file" name="fileToUpload" id="fileToUpload" onchange="fileSelected();" /> </br>
+    </div>
+    <div id="fileName"></div>
+    <div id="fileSize"></div>
+    <div class="row">
+      <input type="button" onclick="uploadFile()" value="Upload" />
+    </div>
+    <div class="row">
+      <input type="button" onclick="location.href='index.html'" value="Back" />
+    </div>
+  </form>
+
+</body>
+
+</html>

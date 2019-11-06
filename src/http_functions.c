@@ -49,7 +49,7 @@ int get_line_from_socket(int sockfd, char* buf) {
     return i;
 }
 
-int get_method_from_str(char* buf, struct http_headers_t* hdr) {
+char* get_method_from_str(char* buf, struct http_headers_t* hdr) {
     int i = 0;
     while (!isSpace(buf[i]) && (i < HTTP_HDR_METHOD_LEN - 1)) {
         hdr->method[i] = buf[i];
@@ -62,7 +62,7 @@ int get_method_from_str(char* buf, struct http_headers_t* hdr) {
         hdr->mode = POST;
     else
         hdr->mode = NOT_IMPLEMENT;
-    return i;
+    return (buf + i);
 }
 
 char* get_url_from_str(char* buf, struct http_headers_t* hdr) {
@@ -82,12 +82,113 @@ char* get_url_from_str(char* buf, struct http_headers_t* hdr) {
             *query_string = '\0';
             query_string++;
         }
+        strcpy(hdr->query, query_string);
     }
-    return query_string;
+    return (buf + i);
+}
+
+void get_version_from_str(char* buf, struct http_headers_t* hdr) {
+    int i = 0, j = 0;
+    while (isSpace(buf[i]) && (i < MAX_LINE_LEN))
+        i++;
+    while (!isSpace(buf[i]) && (buf[i] != '\n') && (i < MAX_LINE_LEN) &&
+           (j < HTTP_HDR_VERSION_LEN - 1))
+        hdr->version[j++] = buf[i++];
+    hdr->version[j] = '\0';
+}
+
+int get_first_header(int sockfd, http_headers_t* hdr) {
+    char buf[MAX_LINE_LEN];
+    // get first line of the header -> `Method Uri Version\r\n`
+    // size_t recv_bytes = get_line_from_socket(sockfd, buf);
+    get_line_from_socket(sockfd, buf);
+    // parse method
+    char* anchor = get_method_from_str(buf, hdr);
+    logger(DEBUG, "Method: %s", hdr->method);
+    if (hdr->mode == NOT_IMPLEMENT) {
+        logger(DEBUG, "Method [%s] not implemented.", hdr->method);
+        http_not_implemented(sockfd);
+        return -1;
+    }
+    // parse url
+    anchor = get_url_from_str(anchor, hdr);
+    logger(DEBUG, "url: %s", hdr->url);
+    // parse version
+    get_version_from_str(anchor, hdr);
+    logger(DEBUG, "http version: %s", hdr->version);
+    return 0;
+}
+
+int get_other_headers(int sockfd, http_headers_t* hdr) {
+    char buf[MAX_LINE_LEN];
+    char key[MAX_LINE_LEN];
+    char value[MAX_LINE_LEN];
+    size_t recv_bytes = 1;
+    while ((recv_bytes > 0) && strcmp("\n", buf)) {
+        recv_bytes = get_line_from_socket(sockfd, buf);
+        int i = 0, j = 0;
+        while ((buf[i] != ':') && (i < (MAX_LINE_LEN - 1))) {
+            key[i] = buf[i];
+            i++;
+        }
+        key[i++] = '\0';  // avoid ':'
+        if (!strcasecmp(key, "Connection")) {
+            while (isSpace(buf[i]) && (i < MAX_LINE_LEN))
+                i++;
+            while ((buf[i] != '\n') && (i < (MAX_LINE_LEN - 1)))
+                value[j++] = buf[i++];
+            value[j] = '\0';
+            if (!strcasecmp(value, "keep-alive")) {
+                hdr->alive = 1;
+                logger(DEBUG, "Connection need keep alive!");
+            }
+        } else if (!strcasecmp(key, "Content-Type")) {
+            while (isSpace(buf[i]) && (i < MAX_LINE_LEN))
+                i++;
+            while ((buf[i] != ';') && (i < (MAX_LINE_LEN - 1)))
+                value[j++] = buf[i++];
+            value[j] = '\0';
+            j = 0;
+            if (!strcasecmp(value, "multipart/form-data")) {
+                while ((isSpace(buf[i]) || buf[i] != '=') && (i < MAX_LINE_LEN))
+                    i++;
+                i++;
+                while ((buf[i] != '\n') && (i < (MAX_LINE_LEN - 1)))
+                    hdr->boundary[j++] = buf[i++];
+                hdr->boundary[j] = '\0';
+                logger(DEBUG, "%s boundary: %s", hdr->method, hdr->boundary);
+            }
+        } else if (!strcasecmp(key, "Content-Length")) {
+            while (isSpace(buf[i]) && (i < MAX_LINE_LEN))
+                i++;
+            while ((buf[i] != '\n') && (i < (MAX_LINE_LEN - 1)))
+                value[j++] = buf[i++];
+            value[j] = '\0';
+            hdr->length = atoi(value);
+            logger(DEBUG, "content length: %d", hdr->length);
+        } else
+            continue;
+    }
+    return 0;
+}
+
+int parse_http_header(int sockfd, http_headers_t* hdr) {
+    if (get_first_header(sockfd, hdr) < 0)
+        return -1;
+    if (get_other_headers(sockfd, hdr) < 0)
+        return -1;
+    return 0;
 }
 
 void send_directory_to_client(int client, char* directory) {
     logger(DEBUG, "list directory: %s", directory);
+    int i = strlen(directory) - 1;
+    char cur_dir[MAX_PATH_LEN];
+    while (i--) {
+        if (directory[i] == '/')
+            break;
+    }
+    strcpy(cur_dir, directory + 1 + i);
     DIR* dir = NULL;
     if (!(dir = opendir(directory))) {
         if (errno == EACCES) {
@@ -108,8 +209,9 @@ void send_directory_to_client(int client, char* directory) {
     logger(DEBUG, "%s", buffer);
     while ((myDir = readdir(dir)) != NULL) {
         // ignore '.' and ".." in current directory
-        if (strcmp(myDir->d_name, "..") && strcmp(myDir->d_name, ".")) {
-            sz = sprintf(buffer, "<a href=\"%s/%s\">%s</a><br />", directory,
+        if (strcmp(myDir->d_name, "..") && strcmp(myDir->d_name, ".") &&
+            strcmp(myDir->d_name, ".DS_Store")) {
+            sz = sprintf(buffer, "<a href=\"%s/%s\">%s</a><br />", cur_dir,
                          myDir->d_name, myDir->d_name);
             while (send(client, buffer, sz, 0) != sz)
                 ;
@@ -119,8 +221,6 @@ void send_directory_to_client(int client, char* directory) {
     sz = sprintf(buffer, "%s", HTML_AFTER_BODY);
     send(client, buffer, sz, 0);
     logger(DEBUG, "%s", buffer);
-    // sz = sprintf(buffer, "\r\n");
-    // while(send(client, buffer, sz, 0) != (int)strlen(buffer));
     closedir(dir);
 }
 
@@ -133,29 +233,29 @@ void send_file(int client, FILE* fp) {
     }
 }
 
-void send_file_to_client(int client, char* filename) {
-    FILE* fp = NULL;
-    int numchars = 1;
-    char buf[1024];
-
-    // read and discard the remaining headers
-    buf[0] = 'A';
-    buf[1] = '\0';
-    while ((numchars > 0) && strcmp("\n", buf)) {
-        numchars = get_line_from_socket(client, buf);
-        // logger(DEBUG, "read and discard headers");
+void get_file_extension(const char* file_name, char* extension) {
+    int i = strlen(file_name) - 1;
+    while (i--) {
+        if (file_name[i] == '.')
+            break;
     }
+    strcpy(extension, file_name + i + 1);
+}
 
-    logger(DEBUG, "GET %s", filename);
+void send_file_to_client(int client, char* file_name) {
+    logger(DEBUG, "GET %s", file_name);
 
-    if ((fp = fopen(filename, "r")) != NULL) {
+    FILE* fp = NULL;
+    if ((fp = fopen(file_name, "r")) != NULL) {
         struct stat st;
-        if (stat(filename, &st) == -1) {
+        if (stat(file_name, &st) == -1) {
             fclose(fp);
             http_internal_server_error(client);
             return;
         }
-        http_ok_send_file(client, st.st_size);
+        char extension[MAX_PATH_LEN];
+        get_file_extension(file_name, extension);
+        http_ok_send_file(client, st.st_size, extension);
         send_file(client, fp);
     } else
         http_not_found(client);
@@ -163,63 +263,81 @@ void send_file_to_client(int client, char* filename) {
     fclose(fp);
 }
 
-void recv_file_from_client(int sockfd, char* path) {
+void recv_file_from_client(int sockfd, char* path, http_headers_t* hdr) {
     logger(DEBUG, "receiving file from client.");
-    http_internal_server_error(sockfd);
+    if (hdr->length == 0 && hdr->mode == POST) {
+        logger(DEBUG, "Receive file => length == 0");
+        http_internal_server_error(sockfd);
+        return;
+    }
+    FILE* fp = NULL;
+    if ((fp = fopen(path, "w")) == NULL) {
+        logger(DEBUG, "Failed to create file %s", path);
+        http_internal_server_error(sockfd);
+        return;
+    }
+    char buf[MAX_LINE_LEN];
+    char start_bound[MAX_LINE_LEN];
+    char end_bound[MAX_LINE_LEN];
+    int bytes_received = 0, is_file_body = 0;
+    strcat(start_bound, "--");
+    strcat(start_bound, hdr->boundary);
+    strcat(start_bound, "\n");
+    strcat(end_bound, "--");
+    strcat(end_bound, hdr->boundary);
+    strcat(end_bound, "--\n");
+    while (bytes_received < hdr->length) {
+        bytes_received += get_line_from_socket(sockfd, buf);
+        logger(DEBUG, "bytes received: %d", bytes_received)
+        if(!strcmp(buf, end_bound)) {
+            logger(DEBUG, "detect end boundary.");
+            break;
+        } else if (!strcmp(buf, start_bound)) {
+            logger(DEBUG, "detect start boundary.");
+            continue;
+        } else if (!strcmp(buf, "\n")) {
+            is_file_body = 1;
+        }
+        if (is_file_body) 
+            fputs(buf, fp);
+    }
+    http_ok(sockfd);
+    fclose(fp);
 }
 
-void get_file_path_on_server(char* path, char* url) {
-    if (!strcmp("/", url))
-        strcpy(path, "htdocs");
-    else
-        strcpy(path, url + 1);
+void get_file_path_on_server(char* path, http_headers_t* hdr) {
+    strcpy(path, SERVER_ROOT_DIR);
+    if (!strcmp("/", hdr->url)) {
+        strcat(path, hdr->url);
+        strcat(path, "index.html");
+    } else
+        strcat(path, hdr->url);
 }
 
 void accept_request_handler(void* arg) {
     int client = (intptr_t)arg;
+    http_headers_t http_hdr;
+    memset(&http_hdr, 0, sizeof(http_headers_t));
 
+    // parse http headers information from sockets
     logger(DEBUG, "Starting to parse method and url");
-    // get the first header of http request,
-    // which is in the format of `method url protocol_version\r\n`
-    char buf[MAX_LINE_LEN];
-    size_t recv_bytes = get_line_from_socket(client, buf);
-
-    // parse method from the first header
-    struct http_headers_t http_hdr = {};
-    int anchor = get_method_from_str(buf, &http_hdr);
-    if (http_hdr.mode == NOT_IMPLEMENT) {
-        logger(DEBUG, "Method [%s] not implemented.", http_hdr.method);
-        http_not_implemented(client);
+    if (parse_http_header(client, &http_hdr) < 0) {
         close(client);
         return;
     }
-    logger(DEBUG, "Method: %s", http_hdr.method);
-
-    // parse url from the first header
-    char* query_string = get_url_from_str(buf + anchor, &http_hdr);
-    logger(DEBUG, "url: %s", http_hdr.url);
 
     // get the file of the main page of html
     char path[MAX_PATH_LEN];
-    get_file_path_on_server(path, http_hdr.url);
-    // if (path[strlen(path) - 1] == '/')
-    //     strcat(path, "index.html");
-    // logger(DEBUG, "path: %s", path);
     struct stat st;
-    if (stat(path, &st) == -1) {  // get file information failed
-        // read and discard the remaining headers
-        while ((recv_bytes > 0) && strcmp("\n", buf))
-            recv_bytes = get_line_from_socket(client, buf);
-        // 404 not found
-        http_not_found(client);
-        close(client);
-        return;
-    }
+    get_file_path_on_server(path, &http_hdr);
     logger(DEBUG, "access path: %s", path);
     switch (http_hdr.mode) {
         case GET:
-            // if path is directory,
-            // automatically use index.html under this folder
+            if (stat(path, &st) == -1) {  // get file information failed
+                http_not_found(client);   // 404 not found
+                close(client);
+                return;
+            }
             if ((st.st_mode & S_IFMT) == S_IFDIR)
                 send_directory_to_client(client, path);
             else if ((st.st_mode & S_IFMT) == S_IFREG)
@@ -229,7 +347,7 @@ void accept_request_handler(void* arg) {
             break;
 
         case POST:
-            recv_file_from_client(client, path);
+            recv_file_from_client(client, path, &http_hdr);
             break;
         default:
             http_not_implemented(client);

@@ -30,7 +30,7 @@
     declarations of functions
  */
 void http_ok(int client);
-void http_ok_send_file(int client, int len);
+void http_ok_send_file(int client, int len, char *extension);
 void http_not_found(int client);
 
 void http_not_implemented(int client);
@@ -38,5 +38,7 @@ void http_bad_request(int client);
 
 void http_forbidden(int client);
 void http_internal_server_error(int client);
+
+const char* get_content_type(char *extension);
 
 #endif

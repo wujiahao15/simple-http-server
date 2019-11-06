@@ -26,11 +26,8 @@ static const char* log_level_str[] = {"DEBUG", "INFO", "WARNING", "ERROR"};
 
 #define logger(level, fmt, ...)                                       \
     do {                                                              \
-        if (level == ERROR) {                                         \
-            log_it(stdout, fmt, log_level_str[level], ##__VA_ARGS__); \
-            perror("");                                               \
-            exit(1);                                                  \
-        }                                                             \
+        if (level == ERROR)                                           \
+            log_it(stderr, fmt, log_level_str[level], ##__VA_ARGS__); \
         if (level < ERROR && level >= this_log_level)                 \
             log_it(stdout, fmt, log_level_str[level], ##__VA_ARGS__); \
     } while (0);

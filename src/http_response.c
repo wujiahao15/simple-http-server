@@ -8,6 +8,14 @@
 
 #define MAX_BUFF_SIZE (1 << 10)
 
+const char* get_content_type(char* extension) {
+    if (!strcmp(extension, "html") || !strcmp(extension, "htm") ||
+        !strcmp(extension, "htx"))
+        return "text/html";
+    else
+        return "application/octet-stream";
+}
+
 void format_and_send_response(int sockfd, const char* msg) {
     char buf[MAX_BUFF_SIZE];
     strcpy(buf, msg);
@@ -25,16 +33,20 @@ void http_ok(int client) {
     format_and_send_response(client, "");
 }
 
-void http_ok_send_file(int client, int len) {
+void http_ok_send_file(int client, int len, char* file_extension) {
     // TODO: could use filename to determine file type
+    char buf[MAX_BUFF_SIZE];
     logger(DEBUG, "sending response headers of sending file");
     // send response back to client
     format_and_send_response(client, "HTTP/1.0 200 OK");
     format_and_send_response(client, SERVER_BASE_STR);
-    format_and_send_response(client, "Content-Type: application/octet-stream");
-    char buf[MAX_BUFF_SIZE];
-    sprintf(buf, "Content-Length: %d", len);
+    const char *type = get_content_type(file_extension);
+    sprintf(buf, "Content-Type: %s", type);
     format_and_send_response(client, buf);
+    if (strcmp(type, "text/html")){
+        sprintf(buf, "Content-Length: %d", len);
+        format_and_send_response(client, buf);
+    }
     format_and_send_response(client, "");
 }
 
@@ -72,8 +84,7 @@ void http_not_found(int client) {
     format_and_send_response(client, "Content-Type: text/html");
     format_and_send_response(client, "");
     char buf[MAX_BUFF_SIZE];
-    sprintf(buf, HTML_RESPONSE_FMT, HTML_TITLE_NOT_FOUND,
-            HTML_BODY_NOT_FOUND);
+    sprintf(buf, HTML_RESPONSE_FMT, HTML_TITLE_NOT_FOUND, HTML_BODY_NOT_FOUND);
     format_and_send_response(client, buf);
 }
 
@@ -85,8 +96,7 @@ void http_forbidden(int client) {
     format_and_send_response(client, "Content-Type: text/html");
     format_and_send_response(client, "");
     char buf[MAX_BUFF_SIZE];
-    sprintf(buf, HTML_RESPONSE_FMT, HTML_TITLE_FORBIDDEN,
-            HTML_BODY_FORBIDDEN);
+    sprintf(buf, HTML_RESPONSE_FMT, HTML_TITLE_FORBIDDEN, HTML_BODY_FORBIDDEN);
     format_and_send_response(client, buf);
 }
 
