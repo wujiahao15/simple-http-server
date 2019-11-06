@@ -1,0 +1,35 @@
+{
+    "editor.fontFamily": "'Source Code Pro', Menlo, Monaco, 'Courier New', monospace",
+    "editor.fontSize": 16,
+    
+    "workbench.colorTheme": "One Dark Pro Vivid",
+    "workbench.fontAliasing": "auto",
+    
+    "editor.cursorWidth": 90,
+    "editor.rulers": [90],
+
+    "markdownlint.config": {
+        "MD013": false,
+        "MD007": {"indent": 4}
+    },
+    "markdown.extension.toc.unorderedList.marker": "*",
+    "window.nativeTabs": true,
+    "terminal.integrated.cursorBlinking": true,
+    "breadcrumbs.enabled": true,
+    "markdown.extension.print.absoluteImgPath": false,
+    "workbench.iconTheme": "vscode-icons",
+    "python.pythonPath": "/usr/local/bin/python",
+    "python.jediEnabled": false,
+    "python.linting.pylintEnabled": true,
+    "markdown.extension.tableFormatter.normalizeIndentation": true,
+    "markdown.extension.toc.githubCompatibility": true,
+    "markdown.extension.showExplorer": true,
+    "markdown.preview.fontFamily": "-apple-system, 'Source Code Pro', BlinkMacSystemFont, 'Segoe WPC', 'Segoe UI', 'HelveticaNeue-Light', 'Ubuntu', 'Droid Sans', sans-serif",
+    "editor.cursorStyle": "line-thin",
+    "latex-workshop.latex.autoBuild.onSave.enabled": false,
+    "indentRainbow.indentSetter": {
+        "javascript": { "tabSize": 2, "insertSpaces": false },
+        "json": { "tabSize": 2, "insertSpaces": false },
+        "html": { "tabSize": 2, "insertSpaces": false }
+    }
+}
