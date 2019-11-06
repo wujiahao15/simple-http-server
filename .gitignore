@@ -1,6 +1,9 @@
 # MacOS Finder
 .DS_Store
 
+# resource folder
+htdocs/resources
+
 # Prerequisites
 *.d
 
