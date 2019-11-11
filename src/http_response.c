@@ -16,29 +16,29 @@ const char* get_content_type(char* extension) {
         return "application/octet-stream";
 }
 
-void format_and_send_response(int sockfd, const char* msg) {
+void format_and_send_response(bfevent_t* client, const char* msg) {
     char buf[MAX_BUFF_SIZE];
     strcpy(buf, msg);
     logger(DEBUG, "%s\\r\\n", msg);
     strcat(buf, "\r\n");
-    send(sockfd, buf, strlen(buf), 0);
+    bufferevent_write(client, buf, strlen(buf));
 }
 
-void http_ok(int client) {
+void http_ok(bfevent_t* client) {
     logger(DEBUG, "sending `ok` response headers");
     // send response back to client
-    format_and_send_response(client, "HTTP/1.0 200 OK");
+    format_and_send_response(client, "HTTP/1.1 200 OK");
     format_and_send_response(client, SERVER_BASE_STR);
     format_and_send_response(client, "Content-Type: text/html");
     format_and_send_response(client, "");
 }
 
-void http_ok_send_file(int client, int len, char* file_extension) {
+void http_ok_send_file(bfevent_t* client, int len, char* file_extension) {
     // TODO: could use filename to determine file type
     char buf[MAX_BUFF_SIZE];
     logger(DEBUG, "sending response headers of sending file");
     // send response back to client
-    format_and_send_response(client, "HTTP/1.0 200 OK");
+    format_and_send_response(client, "HTTP/1.1 200 OK");
     format_and_send_response(client, SERVER_BASE_STR);
     const char *type = get_content_type(file_extension);
     sprintf(buf, "Content-Type: %s", type);
@@ -50,10 +50,10 @@ void http_ok_send_file(int client, int len, char* file_extension) {
     format_and_send_response(client, "");
 }
 
-void http_not_implemented(int client) {
+void http_not_implemented(bfevent_t* client) {
     logger(DEBUG, "sending `not implement` response");
     // send response back to client
-    format_and_send_response(client, "HTTP/1.0 501 Method Not Implemented");
+    format_and_send_response(client, "HTTP/1.1 501 Method Not Implemented");
     format_and_send_response(client, SERVER_BASE_STR);
     format_and_send_response(client, "Content-Type: text/html");
     format_and_send_response(client, "");
@@ -63,10 +63,10 @@ void http_not_implemented(int client) {
     format_and_send_response(client, buf);
 }
 
-void http_internal_server_error(int client) {
+void http_internal_server_error(bfevent_t* client) {
     logger(DEBUG, "sending `internal server error` response headers");
     // send response back to client
-    format_and_send_response(client, "HTTP/1.0 500 Internal Server Error");
+    format_and_send_response(client, "HTTP/1.1 500 Internal Server Error");
     format_and_send_response(client, SERVER_BASE_STR);
     format_and_send_response(client, "Content-Type: text/html");
     format_and_send_response(client, "");
@@ -76,10 +76,10 @@ void http_internal_server_error(int client) {
     format_and_send_response(client, buf);
 }
 
-void http_not_found(int client) {
+void http_not_found(bfevent_t* client) {
     logger(DEBUG, "sending `404 not found` response headers");
     // send response back to client
-    format_and_send_response(client, "HTTP/1.0 404 NOT FOUND");
+    format_and_send_response(client, "HTTP/1.1 404 NOT FOUND");
     format_and_send_response(client, SERVER_BASE_STR);
     format_and_send_response(client, "Content-Type: text/html");
     format_and_send_response(client, "");
@@ -88,10 +88,10 @@ void http_not_found(int client) {
     format_and_send_response(client, buf);
 }
 
-void http_forbidden(int client) {
+void http_forbidden(bfevent_t* client) {
     logger(DEBUG, "sending `forbidden` response headers");
     // send response back to client
-    format_and_send_response(client, "HTTP/1.0 403 Forbidden");
+    format_and_send_response(client, "HTTP/1.1 403 Forbidden");
     format_and_send_response(client, SERVER_BASE_STR);
     format_and_send_response(client, "Content-Type: text/html");
     format_and_send_response(client, "");
@@ -100,10 +100,10 @@ void http_forbidden(int client) {
     format_and_send_response(client, buf);
 }
 
-void http_bad_request(int client) {
+void http_bad_request(bfevent_t* client) {
     logger(DEBUG, "sending `bad request` response headers");
     // send response back to client
-    format_and_send_response(client, "HTTP/1.0 400 Bad Request");
+    format_and_send_response(client, "HTTP/1.1 400 Bad Request");
     format_and_send_response(client, SERVER_BASE_STR);
     format_and_send_response(client, "Content-Type: text/html");
     format_and_send_response(client, "");

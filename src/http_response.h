@@ -1,6 +1,10 @@
 #ifndef __HTTP_RESPONSE_H__
 #define __HTTP_RESPONSE_H__
 
+// libevent
+#include <event.h>
+#include <event2/bufferevent.h>
+
 /* server information */
 #define SERVER_PORT 12306
 #define SERVER_BASE_STR "Server: WUW"
@@ -26,18 +30,21 @@
 #define HTML_TITLE_NOT_IMPLEMENT "501 Method Not Implemented"
 #define HTML_BODY_NOT_IMPLEMENT "HTTP request method not supported"
 
+// typedef struct bufferevent as bfevent_t;
+typedef struct bufferevent bfevent_t;
+
 /* 
     declarations of functions
  */
-void http_ok(int client);
-void http_ok_send_file(int client, int len, char *extension);
-void http_not_found(int client);
+void http_ok(bfevent_t* bev);
+void http_ok_send_file(bfevent_t* bev, int len, char *extension);
+void http_not_found(bfevent_t* bev);
 
-void http_not_implemented(int client);
-void http_bad_request(int client);
+void http_not_implemented(bfevent_t* bev);
+void http_bad_request(bfevent_t* bev);
 
-void http_forbidden(int client);
-void http_internal_server_error(int client);
+void http_forbidden(bfevent_t* bev);
+void http_internal_server_error(bfevent_t* bev);
 
 const char* get_content_type(char *extension);
 

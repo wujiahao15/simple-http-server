@@ -13,7 +13,7 @@
 // for reading directory
 #include <sys/types.h>
 #include <dirent.h>
-
+// self-write header file
 #include "http_response.h"
 
 // http header params
@@ -83,25 +83,25 @@ typedef struct http_headers_t {
     function declarations
  */
 // initialize http server
-int http_init();
-// serve request function
-void accept_request_handler(void* arg);
+evutil_socket_t http_init();
+// callback of handing request
+void do_accept_cb(bfevent_t* bev, void* arg);
 // send directory to client
-void send_directory_to_client(int client, char* directory);
+void send_directory_to_client(bfevent_t* bev, char* directory);
 // send file to client
-void send_file_to_client(int sockfd, char* path);
+void send_file_to_client(bfevent_t* bev, char* path);
 // send file main function
-void send_file(int client, FILE* fp);
+void send_file(bfevent_t* bev, FILE* fp);
 // receive file from client
-void recv_file_from_client(int sockfd, char* path, http_headers_t* hdr);
+void recv_file_from_client(bfevent_t* bev, char* path, http_headers_t* hdr);
 // get first header
-int get_first_header(int sockfd, http_headers_t* hdr);
+int get_first_header(bfevent_t* bev, http_headers_t* hdr);
 // get other headers
-int get_other_headers(int sockfd, http_headers_t* hdr);
+int get_other_headers(bfevent_t* bev, http_headers_t* hdr);
 // parse http header from socket
-int parse_http_header(int sockfd, http_headers_t* hdr);
+int parse_http_header(bfevent_t* bev, http_headers_t* hdr);
 // get line string from socket
-int get_line_from_socket(int sockfd, char* buf);
+int get_line_from_bufferevent(bfevent_t* bev, char* buf);
 // parse method string from given string
 char* get_method_from_str(char* buf, struct http_headers_t* hdr);
 // parse url string from given string

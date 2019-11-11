@@ -2,6 +2,13 @@
 
 A simple http server implemted by c which supports file upload and download
 
+## Development Environment
+
+``` bash
+macOS Catalina
+gcc version: Apple clang version 11.0.0 (clang-1100.0.33.12)
+```
+
 ## Roadmap
 
 * [x] 支持`HTTP GET` 方法
@@ -12,4 +19,4 @@ A simple http server implemted by c which supports file upload and download
 * [ ] 支持 HTTP 持久连接
 * [ ] 支持 HTTP 管道
 * [ ] 使用 `openssl` 库，支持 HTTPS
-* [ ] 使用 `libevent` 支持多路并发
+* [x] 使用 `libevent` 支持多路并发
