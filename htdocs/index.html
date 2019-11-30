@@ -1,7 +1,18 @@
 <html>
+  <link rel="stylesheet" href="https://cdn.staticfile.org/twitter-bootstrap/4.3.1/css/bootstrap.min.css">
   <body>
-    <h1>Welcome to Wu Jiahao's web server!</h1>
-    <button onclick="location.href='resources'">show directory</button>
-    <button onclick="location.href='upload.html'">upload</a>
+    <div class="container">
+    <h1 class="display-3">Welcome to Wu Jiahao's web server!</h1>
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item active"><a href="#">Home</a></li>
+        <li class="breadcrumb-item"><a href="resources">Resources</a></li>
+        <li class="breadcrumb-item"><a href="upload.html">Upload</a></li>
+      </ol>
+      <div class="btn-group" style="margin-left: 450px;">
+        <button class="btn btn-outline-primary btn-sm" onclick="location.href='resources'">show directory</button>
+             
+        <button class="btn btn-outline-secondary btn-sm" onclick="location.href='upload.html'">upload</button>
+      </div>
+    </div>
   </body>
 </html>

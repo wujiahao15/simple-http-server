@@ -13,6 +13,9 @@
 // for reading directory
 #include <sys/types.h>
 #include <dirent.h>
+// for openssl
+#include <openssl/ssl.h>
+#include <openssl/err.h>
 // self-write header file
 #include "http_response.h"
 
@@ -24,26 +27,35 @@
 
 // server root path
 #define SERVER_ROOT_DIR "htdocs"
+// server certificate
+#define SERVER_CRT "CA/server.crt"
+// server certificate key
+#define SERVER_KEY "CA/server.key"
 
 // process params
 #define MAX_PATH_LEN 512
 #define MAX_LINE_LEN 1024
 
 // html strings
-#define HTML_BEFORE_BODY                           \
-    "<!DOCTYPE html>"                              \
-    "<html>"                                       \
-    "<head>"                                       \
-    "<meta charset=\"UTF-8\">"                     \
-    "<title>WUW Web Server Resources Page</title>" \
-    "</head>"                                      \
-    "<body>"                                       \
-    "<h1>Directory listing for /resources/</h1>"
+#define HTML_BEFORE_BODY                                             \
+    "<!DOCTYPE html>"                                                \
+    "<html>"                                                         \
+    "<link rel=\"stylesheet\" "                                      \
+    "href=\"https://cdn.staticfile.org/twitter-bootstrap/4.3.1/css/" \
+    "bootstrap.min.css\">"                                           \
+    "<head>"                                                         \
+    "<meta charset=\"UTF-8\">"                                       \
+    "<title>WUW Web Server Resources Page</title>"                   \
+    "</head>"                                                        \
+    "<body><div class=\"container\">"                                \
+    "<h1 class=\"display-4\">Directory listing for /resources/</h1>" \
+    "<dl><dt>Files List</dt>"
 #define HTML_AFTER_BODY                         \
-    "<input type=\"button\" "                   \
+    "</dl><input type=\"button\" "              \
     "onclick=\"location.href=\'index.html\'\" " \
-    "value=\"Back\" /> </br>"                   \
-    "</body>"                                   \
+    "value=\"Back\" "                           \
+    "class=\"btn btn-primary\"/> </br>"         \
+    "</div></body>"                             \
     "</html>"
 
 // function define
@@ -103,11 +115,11 @@ int parse_http_header(bfevent_t* bev, http_headers_t* hdr);
 // get line string from socket
 int get_line_from_bufferevent(bfevent_t* bev, char* buf);
 // parse method string from given string
-char* get_method_from_str(char* buf, struct http_headers_t* hdr);
+char* get_method_from_str(char* buf, http_headers_t* hdr);
 // parse url string from given string
-char* get_url_from_str(char* buf, struct http_headers_t* hdr);
+char* get_url_from_str(char* buf, http_headers_t* hdr);
 // parse version string from given string
-void get_version_from_str(char* buf, struct http_headers_t* hdr);
+void get_version_from_str(char* buf, http_headers_t* hdr);
 // format path on server from http headers
 void get_file_path_on_server(char* path, http_headers_t* hdr);
 

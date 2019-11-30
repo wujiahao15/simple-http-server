@@ -1,4 +1,3 @@
-#include <pthread.h>
 #include "http_functions.h"
 #include "logger.h"
 

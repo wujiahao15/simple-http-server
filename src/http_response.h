@@ -33,6 +33,25 @@
 // typedef struct bufferevent as bfevent_t;
 typedef struct bufferevent bfevent_t;
 
+static const struct table_entry {
+	const char *extension;
+	const char *content_type;
+} content_type_table[] = {
+	{ "txt", "text/plain" },
+	{ "c", "text/plain" },
+	{ "h", "text/plain" },
+	{ "html", "text/html" },
+	{ "htm", "text/htm" },
+	{ "css", "text/css" },
+	{ "gif", "image/gif" },
+	{ "jpg", "image/jpeg" },
+	{ "jpeg", "image/jpeg" },
+	{ "png", "image/png" },
+	{ "pdf", "application/pdf" },
+	{ "ps", "application/postscript" },
+	{ NULL, NULL },
+};
+
 /* 
     declarations of functions
  */

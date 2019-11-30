@@ -1,5 +1,7 @@
 <!DOCTYPE html>
 <html>
+  <link rel="stylesheet" href="https://cdn.staticfile.org/twitter-bootstrap/4.3.1/css/bootstrap.min.css">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-fileinput/4.4.9/css/fileinput.min.css" media="all" rel="stylesheet" type="text/css" />
 
 <head>
   <title>Upload File</title>
@@ -27,7 +29,7 @@
     function uploadComplete(evt) {
         /* This event is raised when the server send back a response */
         // alert(evt.target.responseText);
-        alert("文件上传完毕！");
+        alert("Success!");
       }
 
     function uploadFailed(evt) {
@@ -40,22 +42,52 @@
   </script>
 </head>
 
+<style>
+  .file {  
+            position: relative;  
+            display: inline-block;  
+            background: #D0EEFF;  
+            border: 1px solid #99D3F5;  
+            border-radius: 4px;  
+            padding: 4px 12px;  
+            overflow: hidden;  
+            color: #1E88C7;  
+            text-decoration: none;  
+            text-indent: 0;  
+            line-height: 20px;  
+        }  
+        .file input {  
+            position: absolute;  
+            font-size: 100px;  
+            right: 0;  
+            top: 0;  
+            opacity: 0;  
+        }  
+        .file:hover {  
+            background: #AADFFD;  
+            border-color: #78C3F3;  
+            color: #004974;  
+            text-decoration: none;  
+        }  
+</style>
+
 <body>
+  <div class="container">
   <h1>Select a file to upload</h1>
-  <form id="uploadForm" enctype="multipart/form-data" method="post" >
-    <div class="row">
-      <input type="file" name="fileToUpload" id="fileToUpload" onchange="fileSelected();" /> </br>
+  <form id="uploadForm" class="form-group" enctype="multipart/form-data" method="post" >
+    <div>
+      <input type="file" class="file" name="fileToUpload" id="fileToUpload" onchange="fileSelected();" /> </br></br>
+      <input type="submit" class="btn btn-primary btn-sm"/>
     </div>
     <div id="fileName"></div>
     <div id="fileSize"></div>
-    <div class="row">
-      <input type="button" onclick="uploadFile()" value="Upload" />
-    </div>
-    <div class="row">
-      <input type="button" onclick="location.href='index.html'" value="Back" />
+    <br/>
+    <div class="btn-group">
+      <input type="button" class="btn btn-primary btn-sm" onclick="uploadFile()" value="Upload" />
+      <input type="button" class="btn btn-outline-primary btn-sm" onclick="location.href='index.html'" value="Back" />
     </div>
   </form>
-
+</div>
 </body>
 
 </html>
