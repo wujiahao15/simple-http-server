@@ -1,56 +1,71 @@
-#include <pthread.h>
-#include "http_functions.h"
-#include "logger.h"
+#include "httpd.h"
 
-void event_cb(struct bufferevent* bev, short event, void* arg);
-void accept_cb(int fd, short events, void* arg);
+int main(int argc, char* argv[]) {
+    // return value of main function
+    int ret = 0;
 
-int main() {
-    // create socket
-    evutil_socket_t httpd = http_init();
-    logger(INFO, "HTTP server is running on localhost:%d", SERVER_PORT);
+    // parse options from command line
+    struct options opt = parse_opts(argc, argv);
 
-    // create a base event
-    struct event_base* base = event_base_new();
+    // create event config
+    struct event_config* cfg = event_config_new();
+    struct event_base* base = event_base_new_with_config(cfg);
+    if (!base) {
+        logger(ERROR, "Couldn't create an event_base: exiting\n");
+        ret = 1;
+    }
+    // free event config when finished
+    event_config_free(cfg);
+    cfg = NULL;
 
-    // create an event for accepting connections
-    struct event* listener =
-        event_new(base, httpd, EV_READ | EV_PERSIST, accept_cb, base);
-    // add listener to the base
-    event_add(listener, NULL);
+    // create a new evhttp object to handle requests.
+    struct evhttp* http = evhttp_new(base);
+    if (!http) {
+        logger(ERROR, "couldn't create evhttp. Exiting.\n");
+        ret = 1;
+    }
 
+    /* The /dump URI will dump all requests to stdout and say 200 ok. */
+    evhttp_set_cb(http, "/", handle_request_cb, NULL);
+
+/* We want to accept arbitrary requests, so we need to set a "generic"
+     * cb.  We can also add callbacks for specific paths. */
+    evhttp_set_gencb(http, send_document_cb, &opt);
+
+    // bind socket to http server
+    struct evhttp_bound_socket* handle =
+        evhttp_bind_socket_with_handle(http, "0.0.0.0", opt.port);
+    if (!handle) {
+        logger(ERROR, "couldn't bind to port %d. Exiting.\n", opt.port);
+        ret = 1;
+        goto err;
+    }
+
+    if (display_listen_sock(handle)) {
+        ret = 1;
+        goto err;
+    }
+
+    // add signal handler to event base
+    struct event* term = evsignal_new(base, SIGINT, do_term, base);
+    if (!term)
+        goto err;
+    if (event_add(term, NULL))
+        goto err;
+
+    // dispatch event
     event_base_dispatch(base);
-    // event_base_free(base);
-    return 0;
+
+    // error handling
+err:
+    if (cfg)
+        event_config_free(cfg);
+    if (http)
+        evhttp_free(http);
+    if (term)
+        event_free(term);
+    if (base)
+        event_base_free(base);
+    return ret;
 }
 
-void event_cb(struct bufferevent* bev, short event, void* arg) {
-    if (event & BEV_EVENT_EOF) {
-        logger(INFO, "connection closed");
-    } else if (event & BEV_EVENT_ERROR) {
-        logger(INFO, "some other error");
-    }
-    bufferevent_free(bev);
-}
-
-void accept_cb(int fd, short events, void* arg) {
-    struct sockaddr_in client;
-    socklen_t len = sizeof(client);
-
-    evutil_socket_t sockfd;
-    if ((sockfd = accept(fd, (struct sockaddr*)&client, &len)) < 0) {
-        logger(ERROR, "accept() failed");
-        return;
-    }
-    evutil_make_socket_nonblocking(sockfd);
-
-    logger(INFO, "Accept a client: %d", sockfd);
-
-    struct event_base* base = (struct event_base*)arg;
-
-    struct bufferevent* bev =
-        bufferevent_socket_new(base, sockfd, BEV_OPT_CLOSE_ON_FREE);
-    bufferevent_setcb(bev, do_accept_cb, NULL, event_cb, arg);
-
-    bufferevent_enable(bev, EV_READ | EV_PERSIST | EV_WRITE);
-}

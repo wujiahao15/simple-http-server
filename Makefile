@@ -1,5 +1,5 @@
 all: wuw_server 
-LIBS = -lpthread -levent
+LIBS = -levent
 SRCDIR = src
 SRCS := $(shell find $(SRCDIR) -name "*.c")
 
