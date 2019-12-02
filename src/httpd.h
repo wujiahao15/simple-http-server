@@ -55,7 +55,6 @@ static void dump_request_cb(struct evhttp_request* req, void* arg);
 static void handle_request_cb(struct evhttp_request* req, void* arg);
 static void send_document_cb(struct evhttp_request* req, void* arg);
 
-
 /* Try to guess a good content-type for 'path' */
 static const char* guess_content_type(const char* path) {
     const char *last_period, *extension;
@@ -116,8 +115,8 @@ static void do_term(int sig, short events, void* arg) {
 }
 
 static int display_listen_sock(struct evhttp_bound_socket* handle) {
-    struct sockaddr_storage ss;
     evutil_socket_t fd;
+    struct sockaddr_storage ss;
     ev_socklen_t socklen = sizeof(ss);
     char addrbuf[128];
     void* inaddr;
@@ -217,7 +216,7 @@ static void dump_request_cb(struct evhttp_request* req, void* arg) {
     evhttp_send_reply(req, 200, "OK", NULL);
 }
 
-void print_method(struct evhttp_request* req) {
+const char* print_method(struct evhttp_request* req) {
     const char* cmd_type = NULL;
     switch (evhttp_request_get_command(req)) {
         case EVHTTP_REQ_GET:
@@ -253,28 +252,50 @@ void print_method(struct evhttp_request* req) {
     }
     logger(DEBUG, "Received a %s request for %s\nHeaders:\n", cmd_type,
            evhttp_request_get_uri(req));
+    return cmd_type;
 }
 
 static void handle_request_cb(struct evhttp_request* req, void* arg) {
-    print_method(req);
-    
+    const char* method = print_method(req);
+    if (evutil_ascii_strcasecmp(method, "POST") &&
+        evutil_ascii_strcasecmp(method, "GET")) {
+        // not implemented
+        return;
+    }
+
+    // parse uri from http header
+    const char* uri = evhttp_request_get_uri(req);
+    logger(DEBUG, "Got a %s request for <%s>", method, uri);
+
+    // decode the uri
+    struct evhttp_uri* decoded = evhttp_uri_parse(uri);
+    // logger(DEBUG, "uri: %s", decoded);
+    if (!decoded) {
+        logger(DEBUG, "It's not a good URI. Sending BADREQUEST");
+        evhttp_send_error(req, HTTP_BADREQUEST, 0);
+        return;
+    }
 }
 
 static void send_document_cb(struct evhttp_request* req, void* arg) {
     int fd = -1;
     struct options* opt = (struct options*)arg;
+    struct evbuffer* evb = NULL;
+    char* whole_path = NULL;
+    char* decoded_path = NULL;
+    const char* uri = NULL;
+    const char* path = NULL;
 
     if (evhttp_request_get_command(req) != EVHTTP_REQ_GET) {
         dump_request_cb(req, arg);
         return;
     }
 
-    const char* uri = evhttp_request_get_uri(req);
+    uri = evhttp_request_get_uri(req);
     logger(DEBUG, "Got a GET request for <%s>", uri);
 
     /* Decode the URI */
     struct evhttp_uri* decoded = evhttp_uri_parse(uri);
-    logger(DEBUG, "uri: %s", decoded);
     if (!decoded) {
         logger(DEBUG, "It's not a good URI. Sending BADREQUEST");
         evhttp_send_error(req, HTTP_BADREQUEST, 0);
@@ -282,12 +303,13 @@ static void send_document_cb(struct evhttp_request* req, void* arg) {
     }
 
     /* Let's see what path the user asked for. */
-    const char* path = evhttp_uri_get_path(decoded);
+    path = evhttp_uri_get_path(decoded);
+    logger(DEBUG, "path: %s", path);
     if (!path)
         path = "/";
 
     /* We need to decode it, to see what path the user really wanted. */
-    char* decoded_path = evhttp_uridecode(path, 0, NULL);
+    decoded_path = evhttp_uridecode(path, 0, NULL);
     if (decoded_path == NULL)
         goto err;
     /* Don't allow any ".."s in the path, to avoid exposing stuff outside
@@ -297,7 +319,6 @@ static void send_document_cb(struct evhttp_request* req, void* arg) {
     if (strstr(decoded_path, ".."))
         goto err;
 
-    char* whole_path = NULL;
     size_t len = strlen(decoded_path) + strlen(opt->docroot) + 2;
     if (!(whole_path = malloc(len))) {
         perror("malloc");
@@ -311,7 +332,7 @@ static void send_document_cb(struct evhttp_request* req, void* arg) {
     }
 
     /* This holds the content we're sending. */
-    struct evbuffer* evb = evbuffer_new();
+    evb = evbuffer_new();
 
     if (S_ISDIR(st.st_mode)) {
         /* If it's a directory, read the comments and make a little

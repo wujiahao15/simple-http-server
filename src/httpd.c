@@ -3,7 +3,8 @@
 int main(int argc, char* argv[]) {
     // return value of main function
     int ret = 0;
-
+    struct event* term = NULL;
+    
     // parse options from command line
     struct options opt = parse_opts(argc, argv);
 
@@ -28,7 +29,7 @@ int main(int argc, char* argv[]) {
     /* The /dump URI will dump all requests to stdout and say 200 ok. */
     evhttp_set_cb(http, "/", handle_request_cb, NULL);
 
-/* We want to accept arbitrary requests, so we need to set a "generic"
+    /* We want to accept arbitrary requests, so we need to set a "generic"
      * cb.  We can also add callbacks for specific paths. */
     evhttp_set_gencb(http, send_document_cb, &opt);
 
@@ -47,7 +48,7 @@ int main(int argc, char* argv[]) {
     }
 
     // add signal handler to event base
-    struct event* term = evsignal_new(base, SIGINT, do_term, base);
+    term = evsignal_new(base, SIGINT, do_term, base);
     if (!term)
         goto err;
     if (event_add(term, NULL))
@@ -68,4 +69,3 @@ err:
         event_base_free(base);
     return ret;
 }
-
