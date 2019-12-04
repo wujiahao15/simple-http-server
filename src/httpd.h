@@ -2,30 +2,44 @@
 #define __HTTPD_H__
 
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <stdlib.h> /* atoi() */
+#include <string.h> /* strstr() */
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <fcntl.h>
-#include <unistd.h>       /* for getopt */
-#include <signal.h>       /* for signal handlers */
-#include <dirent.h>       /* for directory entries */
-#include <event2/event.h> /* for event */
-#include <event2/http.h>  /* for evhttp components */
+#include <fcntl.h>  /* open() */
+#include <unistd.h> /* close() */
+#include <signal.h> /* for signal handlers */
+#include <dirent.h> /* for directory entries */
+#include <netinet/in.h>
+
+#include <event2/event.h>
+#include <event2/http.h>
 #include <event2/listener.h>
 #include <event2/buffer.h>
 #include <event2/util.h>
-#include <event2/keyvalq_struct.h> /* for evhttp_header */
-#include <netinet/in.h>
+#include <event2/keyvalq_struct.h>
 
 #include "logger.h" /* for logging information */
+
+#define HTML_BEFORE_BODY         \
+    "<!DOCTYPE html>\n"          \
+    "<html>\n <head>\n"          \
+    "  <meta charset='utf-8'>\n" \
+    "  <title>%s</title>\n"      \
+    "  <base href='%s%s'>\n"     \
+    " </head>\n"                 \
+    " <body>\n"                  \
+    "  <h1>%s</h1>\n"            \
+    "  <ul>\n"
+#define MAX_LINE_LEN 1024
 
 struct options {
     int port;
     const char* docroot;
 };
 
+static char uri_root[512];
 static const struct table_entry {
     const char* extension;
     const char* content_type;
@@ -45,15 +59,15 @@ static const struct table_entry {
     {NULL, NULL},
 };
 
+
 static struct options parse_opts(int argc, char** argv);
 static void print_usage(FILE* out, const char* prog, int exit_code);
 static void do_term(int sig, short events, void* arg);
 
 static const char* guess_content_type(const char* path);
 static int display_listen_sock(struct evhttp_bound_socket* handle);
-static void dump_request_cb(struct evhttp_request* req, void* arg);
+static int handle_post_cb(struct evhttp_request* req, char* whole_path);
 static void handle_request_cb(struct evhttp_request* req, void* arg);
-static void send_document_cb(struct evhttp_request* req, void* arg);
 
 /* Try to guess a good content-type for 'path' */
 static const char* guess_content_type(const char* path) {
@@ -102,7 +116,7 @@ static struct options parse_opts(int argc, char** argv) {
     }
 
     o.docroot = argv[optind];
-    logger(DEBUG, "port: %d", o.port);
+    // logger(DEBUG, "port: %d", o.port);
     logger(DEBUG, "Doc root: %s", o.docroot);
 
     return o;
@@ -111,7 +125,8 @@ static struct options parse_opts(int argc, char** argv) {
 static void do_term(int sig, short events, void* arg) {
     struct event_base* base = (struct event_base*)arg;
     event_base_loopbreak(base);
-    logger(ERROR, "Got %i, Terminating\n", sig);
+    printf("\n");
+    logger(INFO, "Catch Control+c, Terminating...");
 }
 
 static int display_listen_sock(struct evhttp_bound_socket* handle) {
@@ -129,7 +144,7 @@ static int display_listen_sock(struct evhttp_bound_socket* handle) {
         perror("getsockname() failed");
         return 1;
     }
-    logger(DEBUG, "bound sockfd: %d", fd);
+    // logger(DEBUG, "Bound sockfd: %d", fd);
 
     if (ss.ss_family == AF_INET) {
         got_port = ntohs(((struct sockaddr_in*)&ss)->sin_port);
@@ -144,9 +159,9 @@ static int display_listen_sock(struct evhttp_bound_socket* handle) {
 
     addr = evutil_inet_ntop(ss.ss_family, inaddr, addrbuf, sizeof(addrbuf));
     if (addr) {
-        logger(DEBUG, "Listening on %s:%d\n", addr, got_port);
-        // evutil_snprintf(uri_root, sizeof(uri_root), "http://%s:%d",
-        // addr,got_port);
+        logger(DEBUG, "Listening on %s:%d", addr, got_port);
+        evutil_snprintf(uri_root, sizeof(uri_root), "http://%s:%d", addr,
+                        got_port);
     } else {
         logger(ERROR, "evutil_inet_ntop failed\n");
         return 1;
@@ -155,68 +170,102 @@ static int display_listen_sock(struct evhttp_bound_socket* handle) {
     return 0;
 }
 
-static void dump_request_cb(struct evhttp_request* req, void* arg) {
-    const char* cmdtype;
+int get_line_from_evbuffer(struct evbuffer* buffer, char* buf) {
+    int ret = 0, i = 0, is_a_line = 0;
+    char c = '\0', c_b = '\0';
+
+    // read characters one by one, and add them into buf[]
+    while ((i < MAX_LINE_LEN - 1) && (c != '\n') &&
+           evbuffer_get_length(buffer)) {
+        ret = evbuffer_remove(buffer, &c, 1);
+        // logger(DEBUG,"ret = %d, char = %c", ret, c);
+        if (ret > 0) {
+            // stop when encounters "\r\n"
+            if ((c_b == '\r') && (c == '\n')) {
+                buf[i - 1] = c;
+                is_a_line = 1;
+                break;
+            }
+            c_b = c;
+            buf[i++] = c;
+        } else {
+            c = '\n';
+        }
+    }
+    // add '\0' to the end of the string
+    buf[i] = '\0';
+    return (i + is_a_line);
+}
+
+static int handle_post_cb(struct evhttp_request* req, char* whole_path) {
+    char cbuf[MAX_LINE_LEN] = {};
+    char bound_begin[128] = {};
+    char bound_end[128] = {};
+    const char* bound_pattern = "boundary=";
+    int content_length = 0, received = 0;
+    int data_left = -1, total = 0;
     struct evkeyvalq* headers;
     struct evkeyval* header;
     struct evbuffer* buf;
+    FILE* fp = NULL;
 
-    switch (evhttp_request_get_command(req)) {
-        case EVHTTP_REQ_GET:
-            cmdtype = "GET";
-            break;
-        case EVHTTP_REQ_POST:
-            cmdtype = "POST";
-            break;
-        case EVHTTP_REQ_HEAD:
-            cmdtype = "HEAD";
-            break;
-        case EVHTTP_REQ_PUT:
-            cmdtype = "PUT";
-            break;
-        case EVHTTP_REQ_DELETE:
-            cmdtype = "DELETE";
-            break;
-        case EVHTTP_REQ_OPTIONS:
-            cmdtype = "OPTIONS";
-            break;
-        case EVHTTP_REQ_TRACE:
-            cmdtype = "TRACE";
-            break;
-        case EVHTTP_REQ_CONNECT:
-            cmdtype = "CONNECT";
-            break;
-        case EVHTTP_REQ_PATCH:
-            cmdtype = "PATCH";
-            break;
-        default:
-            cmdtype = "unknown";
-            break;
-    }
-
-    logger(DEBUG, "Received a %s request for %s\nHeaders:\n", cmdtype,
-           evhttp_request_get_uri(req));
-
+    /* Parse request header for content-length and boundary string. */
     headers = evhttp_request_get_input_headers(req);
     for (header = headers->tqh_first; header; header = header->next.tqe_next) {
-        logger(DEBUG, "  %s: %s\n", header->key, header->value);
+        // logger(DEBUG, "%s: %s", header->key, header->value);
+        if (!evutil_ascii_strcasecmp(header->key, "Content-Type")) {
+            char* ptr =
+                strstr(header->value, bound_pattern) + strlen(bound_pattern);
+            logger(DEBUG, "boundary = %s", ptr);
+            strncpy(bound_begin, "--", 2);
+            strncat(bound_begin, ptr, strlen(ptr));
+            strncpy(bound_end, bound_begin, strlen(bound_begin));
+            strncat(bound_begin, "\n", 1);
+            strncat(bound_end, "--\n", 3);
+        } else if (!evutil_ascii_strcasecmp(header->key, "Content-Length")) {
+            content_length = atoi(header->value);
+            logger(DEBUG, "Content-Length = %d", content_length);
+        }
     }
 
+    /* Get content body */
+    if (!(fp = fopen(whole_path, "w"))) {
+        logger(ERROR, "Error open file to write in POST");
+        return -1;
+    }
     buf = evhttp_request_get_input_buffer(req);
-    puts("Input data: <<<");
-    while (evbuffer_get_length(buf)) {
-        int n;
-        char cbuf[128];
-        n = evbuffer_remove(buf, cbuf, sizeof(cbuf));
-        if (n > 0)
-            (void)fwrite(cbuf, 1, n, stdout);
+    //  && evbuffer_get_length(buf)
+    while (total != content_length) {
+        memset(cbuf, 0, MAX_LINE_LEN);
+        received = get_line_from_evbuffer(buf, cbuf);
+        total += received;
+        if (data_left > 0) {
+            data_left -= strlen(cbuf);
+            if (data_left < 0)
+                cbuf[strlen(cbuf) - 1] = '\0';
+            fputs(cbuf, fp);
+            cbuf[strlen(cbuf) - 1] = '\0';
+            logger(DEBUG, "tofile: %s", cbuf);
+            continue;
+        }
+        // logger(DEBUG, "line: %s", cbuf);
+        if (!evutil_ascii_strcasecmp(cbuf, bound_begin)) {
+            // logger(DEBUG, "Content body begin.");
+        } else if (!evutil_ascii_strcasecmp(cbuf, bound_end)) {
+            logger(DEBUG, "received(%d) == content(%d)", total, content_length);
+        }
+        if (strstr(cbuf, "Content-Type:")) {
+            total += get_line_from_evbuffer(buf, cbuf);
+            data_left = content_length - total - strlen(bound_end) - 3;
+            logger(DEBUG, "Data Length: %d", data_left);
+        }
     }
-    puts(">>>");
-
     evhttp_send_reply(req, 200, "OK", NULL);
+    fclose(fp);
+    return 0;
 }
 
-const char* print_method(struct evhttp_request* req) {
+const char* get_req_method_str(struct evhttp_request* req) {
     const char* cmd_type = NULL;
     switch (evhttp_request_get_command(req)) {
         case EVHTTP_REQ_GET:
@@ -250,34 +299,12 @@ const char* print_method(struct evhttp_request* req) {
             cmd_type = "unknown";
             break;
     }
-    logger(DEBUG, "Received a %s request for %s\nHeaders:\n", cmd_type,
-           evhttp_request_get_uri(req));
+    // logger(DEBUG, "Received a %s request for %s", cmd_type,
+    //    evhttp_request_get_uri(req));
     return cmd_type;
 }
 
 static void handle_request_cb(struct evhttp_request* req, void* arg) {
-    const char* method = print_method(req);
-    if (evutil_ascii_strcasecmp(method, "POST") &&
-        evutil_ascii_strcasecmp(method, "GET")) {
-        // not implemented
-        return;
-    }
-
-    // parse uri from http header
-    const char* uri = evhttp_request_get_uri(req);
-    logger(DEBUG, "Got a %s request for <%s>", method, uri);
-
-    // decode the uri
-    struct evhttp_uri* decoded = evhttp_uri_parse(uri);
-    // logger(DEBUG, "uri: %s", decoded);
-    if (!decoded) {
-        logger(DEBUG, "It's not a good URI. Sending BADREQUEST");
-        evhttp_send_error(req, HTTP_BADREQUEST, 0);
-        return;
-    }
-}
-
-static void send_document_cb(struct evhttp_request* req, void* arg) {
     int fd = -1;
     struct options* opt = (struct options*)arg;
     struct evbuffer* evb = NULL;
@@ -286,13 +313,15 @@ static void send_document_cb(struct evhttp_request* req, void* arg) {
     const char* uri = NULL;
     const char* path = NULL;
 
-    if (evhttp_request_get_command(req) != EVHTTP_REQ_GET) {
-        dump_request_cb(req, arg);
-        return;
-    }
-
+    // if ((evhttp_request_get_command(req) != EVHTTP_REQ_POST) &&
+    //     (evhttp_request_get_command(req) != EVHTTP_REQ_GET)) {
+    //     evhttp_send_error(req, HTTP_NOTIMPLEMENTED, 0);
+    //     goto done;
+    // }
+    /* Handling request starts. */
+    const char* type = get_req_method_str(req);
     uri = evhttp_request_get_uri(req);
-    logger(DEBUG, "Got a GET request for <%s>", uri);
+    logger(DEBUG, "Got a <%s> request for <%s>", type, uri);
 
     /* Decode the URI */
     struct evhttp_uri* decoded = evhttp_uri_parse(uri);
@@ -312,6 +341,8 @@ static void send_document_cb(struct evhttp_request* req, void* arg) {
     decoded_path = evhttp_uridecode(path, 0, NULL);
     if (decoded_path == NULL)
         goto err;
+    logger(DEBUG, "decoded path: %s", decoded_path);
+
     /* Don't allow any ".."s in the path, to avoid exposing stuff outside
      * of the docroot.  This test is both overzealous and underzealous:
      * it forbids aceptable paths like "/this/one..here", but it doesn't
@@ -324,8 +355,20 @@ static void send_document_cb(struct evhttp_request* req, void* arg) {
         perror("malloc");
         goto err;
     }
-    evutil_snprintf(whole_path, len, "%s/%s", opt->docroot, decoded_path);
 
+    int offset = (decoded_path[0] == '/') ? 1 : 0;
+    evutil_snprintf(whole_path, len - offset, "%s/%s", opt->docroot,
+                    decoded_path + offset);
+    logger(DEBUG, "whole path: %s", whole_path);
+
+    if (evhttp_request_get_command(req) == EVHTTP_REQ_POST) {
+        if (!handle_post_cb(req, whole_path))
+            goto done;
+        else
+            goto err;
+    }
+
+    /* Below is GET handler*/
     struct stat st;
     if (stat(whole_path, &st) < 0) {
         goto err;
@@ -347,25 +390,13 @@ static void send_document_cb(struct evhttp_request* req, void* arg) {
         if (!(d = opendir(whole_path)))
             goto err;
 
-        evbuffer_add_printf(evb,
-                            "<!DOCTYPE html>\n"
-                            "<html>\n <head>\n"
-                            "  <meta charset='utf-8'>\n"
-                            "  <title>%s</title>\n"
-                            "  <base href='%s%s'>\n"
-                            " </head>\n"
-                            " <body>\n"
-                            "  <h1>%s</h1>\n"
-                            "  <ul>\n",
-                            decoded_path, /* XXX html-escape this. */
-                            path,         /* XXX html-escape this? */
-                            trailing_slash,
-                            decoded_path /* XXX html-escape this */);
+        evbuffer_add_printf(evb, HTML_BEFORE_BODY, decoded_path, path,
+                            trailing_slash, decoded_path);
 
         while ((ent = readdir(d))) {
             const char* name = ent->d_name;
             evbuffer_add_printf(evb, "    <li><a href=\"%s\">%s</a>\n", name,
-                                name); /* XXX escape this */
+                                name);
         }
         evbuffer_add_printf(evb, "</ul></body></html>\n");
 
@@ -377,6 +408,7 @@ static void send_document_cb(struct evhttp_request* req, void* arg) {
         /* Otherwise it's a file; add it to the buffer to get
          * sent via sendfile */
         const char* type = guess_content_type(decoded_path);
+
         if ((fd = open(whole_path, O_RDONLY)) < 0) {
             perror("open");
             goto err;

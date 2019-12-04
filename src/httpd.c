@@ -22,22 +22,19 @@ int main(int argc, char* argv[]) {
     // create a new evhttp object to handle requests.
     struct evhttp* http = evhttp_new(base);
     if (!http) {
-        logger(ERROR, "couldn't create evhttp. Exiting.\n");
+        logger(ERROR, "Couldn't create evhttp. Exiting.\n");
         ret = 1;
     }
 
-    /* The /dump URI will dump all requests to stdout and say 200 ok. */
-    evhttp_set_cb(http, "/", handle_request_cb, NULL);
-
     /* We want to accept arbitrary requests, so we need to set a "generic"
      * cb.  We can also add callbacks for specific paths. */
-    evhttp_set_gencb(http, send_document_cb, &opt);
+    evhttp_set_gencb(http, handle_request_cb, &opt);
 
     // bind socket to http server
     struct evhttp_bound_socket* handle =
         evhttp_bind_socket_with_handle(http, "0.0.0.0", opt.port);
     if (!handle) {
-        logger(ERROR, "couldn't bind to port %d. Exiting.\n", opt.port);
+        logger(ERROR, "Couldn't bind to port %d. Exiting.\n", opt.port);
         ret = 1;
         goto err;
     }
