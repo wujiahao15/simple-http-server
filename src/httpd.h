@@ -443,8 +443,10 @@ static void handle_request_cb(struct evhttp_request* req, void* arg) {
         }
 
         size_t file_size = st.st_size;
+        logger(DEBUG, "File size: %d", (int)file_size);
         evhttp_add_header(evhttp_request_get_output_headers(req),
                           "Content-Type", type);
+        evhttp_send_reply_start(req, HTTP_OK, "Start to send directory.");
         for (off_t offset = 0; offset < file_size;) {
             size_t bytesLeft = file_size - offset;
             size_t bytesToRead =
@@ -452,12 +454,14 @@ static void handle_request_cb(struct evhttp_request* req, void* arg) {
             read(fd, tmp, bytesToRead);
             offset += bytesToRead;
             lseek(fd, offset, SEEK_SET);
+            logger(DEBUG, "%d data sent.", (int)offset);
             send_data_by_chunk(req, evb, tmp, strlen(tmp));
         }
         // evbuffer_add_file(evb, fd, 0, st.st_size);
     }
 
     evhttp_send_reply_end(req);
+    logger(DEBUG, "Reply end.");
     // evhttp_send_reply(req, 200, "OK", evb);
     goto done;
 err:
