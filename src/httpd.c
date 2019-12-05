@@ -40,8 +40,8 @@ int main(int argc, char* argv[]) {
     struct event* term = NULL;
 
     // parse options from command line
-    struct options opt = parse_opts(argc, argv);
-
+    //struct options opt = parse_opts(argc, argv);
+    struct options opt = {.port = 12306, .docroot="htdocs"};
     // create event config
     struct event_config* cfg = event_config_new();
     struct event_base* base = event_base_new_with_config(cfg);
