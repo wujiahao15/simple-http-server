@@ -38,6 +38,7 @@
     "  <h1>%s</h1>\n"            \
     "  <ul>\n"
 #define MAX_LINE_LEN 1024
+#define CHUNK_SIZE 512
 
 struct options {
     int port;
@@ -73,7 +74,7 @@ static int display_listen_sock(struct evhttp_bound_socket* handle);
 static int handle_post_cb(struct evhttp_request* req, char* whole_path);
 static void handle_request_cb(struct evhttp_request* req, void* arg);
 
-void die_most_horribly_from_openssl_error (const char *func);
+void die_most_horribly_from_openssl_error(const char* func);
 static struct bufferevent* bevcb(struct event_base* base, void* arg);
 
 /* Try to guess a good content-type for 'path' */
@@ -311,6 +312,16 @@ const char* get_req_method_str(struct evhttp_request* req) {
     return cmd_type;
 }
 
+void send_data_by_chunk(struct evhttp_request* req,
+                        struct evbuffer* evb,
+                        char* data,
+                        int len) {
+    evb = evbuffer_new();
+    evbuffer_add(evb, data, len);
+    evhttp_send_reply_chunk(req, evb);
+    evbuffer_free(evb);
+}
+
 static void handle_request_cb(struct evhttp_request* req, void* arg) {
     int fd = -1;
     struct options* opt = (struct options*)arg;
@@ -381,9 +392,8 @@ static void handle_request_cb(struct evhttp_request* req, void* arg) {
         goto err;
     }
 
+    char tmp[MAX_LINE_LEN];
     /* This holds the content we're sending. */
-    evb = evbuffer_new();
-
     if (S_ISDIR(st.st_mode)) {
         /* If it's a directory, read the comments and make a little
          * index page */
@@ -397,20 +407,24 @@ static void handle_request_cb(struct evhttp_request* req, void* arg) {
         if (!(d = opendir(whole_path)))
             goto err;
 
-        evbuffer_add_printf(evb, HTML_BEFORE_BODY, decoded_path, path,
-                            trailing_slash, decoded_path);
+        evhttp_add_header(evhttp_request_get_output_headers(req),
+                          "Content-Type", "text/html");
+
+        evhttp_send_reply_start(req, HTTP_OK, "Start to send directory.");
+
+        sprintf(tmp, HTML_BEFORE_BODY, decoded_path, path, trailing_slash,
+                decoded_path);
+        send_data_by_chunk(req, evb, tmp, strlen(tmp));
 
         while ((ent = readdir(d))) {
             const char* name = ent->d_name;
-            evbuffer_add_printf(evb, "    <li><a href=\"%s\">%s</a>\n", name,
-                                name);
+            sprintf(tmp, "    <li><a href=\"%s\">%s</a>\n", name, name);
+            send_data_by_chunk(req, evb, tmp, strlen(tmp));
         }
-        evbuffer_add_printf(evb, "</ul></body></html>\n");
+        sprintf(tmp, "</ul></body></html>\n");
+        send_data_by_chunk(req, evb, tmp, strlen(tmp));
 
         closedir(d);
-
-        evhttp_add_header(evhttp_request_get_output_headers(req),
-                          "Content-Type", "text/html");
     } else {
         /* Otherwise it's a file; add it to the buffer to get
          * sent via sendfile */
@@ -427,12 +441,25 @@ static void handle_request_cb(struct evhttp_request* req, void* arg) {
             perror("fstat");
             goto err;
         }
+        
+        size_t file_size = st.st_size;
         evhttp_add_header(evhttp_request_get_output_headers(req),
                           "Content-Type", type);
-        evbuffer_add_file(evb, fd, 0, st.st_size);
+        for (off_t offset = 0; offset < file_size;) {
+            evb = evbuffer_new();
+            size_t bytesLeft = file_size - offset;
+            size_t bytesToRead =
+                bytesLeft > CHUNK_SIZE ? CHUNK_SIZE : bytesLeft;
+            evbuffer_add_file(evb, fd, offset, bytesToRead);
+            offset += bytesToRead;
+            evhttp_send_reply_chunk(req, evb);
+            evbuffer_free(evb);
+        }
+        // evbuffer_add_file(evb, fd, 0, st.st_size);
     }
 
-    evhttp_send_reply(req, 200, "OK", evb);
+    evhttp_send_reply_end(req);
+    // evhttp_send_reply(req, 200, "OK", evb);
     goto done;
 err:
     evhttp_send_error(req, 404, "Document was not found");
@@ -456,29 +483,28 @@ done:
  */
 static struct bufferevent* bevcb(struct event_base* base, void* arg) {
     struct bufferevent* bev;
-    SSL_CTX *server_ctx;
-    SSL *client_ctx;
+    SSL_CTX* server_ctx;
+    SSL* client_ctx;
 
-    server_ctx = (SSL_CTX *)arg;
+    server_ctx = (SSL_CTX*)arg;
     client_ctx = SSL_new(server_ctx);
 
-    bev = bufferevent_openssl_socket_new(base, -1, client_ctx,
-                                         BUFFEREVENT_SSL_ACCEPTING,
-                                         BEV_OPT_CLOSE_ON_FREE|BEV_OPT_DEFER_CALLBACKS);
+    bev = bufferevent_openssl_socket_new(
+        base, -1, client_ctx, BUFFEREVENT_SSL_ACCEPTING,
+        BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
     // bufferevent_enable(bev, EV_READ);
     logger(DEBUG, "openssl socket evbuffer created");
     return bev;
 }
 
-void die_most_horribly_from_openssl_error (const char *func)
-{ 
-    logger (ERROR, "%s failed:\n", func);
+void die_most_horribly_from_openssl_error(const char* func) {
+    logger(ERROR, "%s failed:\n", func);
 
     /* This is the OpenSSL function that prints the contents of the
      * error stack to the specified file handle. */
-    ERR_print_errors_fp (stderr);
+    ERR_print_errors_fp(stderr);
 
-    exit (EXIT_FAILURE);
+    exit(EXIT_FAILURE);
 }
 
 #endif

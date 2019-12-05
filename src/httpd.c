@@ -62,7 +62,7 @@ int main(int argc, char* argv[]) {
 
     SSL_CTX* ctx = evssl_init();
     if (ctx == NULL) {
-        logger(ERROR, "Couldn't init ssl.");
+        logger(ERROR, "Couldn't init ssl. Exiting\n");
         goto err;
     }
 
