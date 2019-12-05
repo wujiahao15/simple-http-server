@@ -441,20 +441,21 @@ static void handle_request_cb(struct evhttp_request* req, void* arg) {
             perror("fstat");
             goto err;
         }
-        
+
         size_t file_size = st.st_size;
         evhttp_add_header(evhttp_request_get_output_headers(req),
                           "Content-Type", type);
-        for (off_t offset = 0; offset < file_size;) {
-            evb = evbuffer_new();
-            size_t bytesLeft = file_size - offset;
-            size_t bytesToRead =
-                bytesLeft > CHUNK_SIZE ? CHUNK_SIZE : bytesLeft;
-            evbuffer_add_file(evb, fd, offset, bytesToRead);
-            offset += bytesToRead;
-            evhttp_send_reply_chunk(req, evb);
-            evbuffer_free(evb);
-        }
+        // for (off_t offset = 0; offset < file_size;) {
+        //     evb = evbuffer_new();
+        //     size_t bytesLeft = file_size - offset;
+        //     size_t bytesToRead =
+        //         bytesLeft > CHUNK_SIZE ? CHUNK_SIZE : bytesLeft;
+        //     evbuffer_add_file(evb, fd, offset, bytesToRead);
+        //     offset += bytesToRead;
+        evbuffer_add_file(evb, fd, 0, file_size);
+        evhttp_send_reply_chunk(req, evb);
+        evbuffer_free(evb);
+        // }
         // evbuffer_add_file(evb, fd, 0, st.st_size);
     }
 
