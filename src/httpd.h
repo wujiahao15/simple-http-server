@@ -20,6 +20,11 @@
 #include <event2/util.h>
 #include <event2/keyvalq_struct.h>
 
+#include <event2/bufferevent_ssl.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+#include <openssl/rand.h> /* for RAND_poll() */
+
 #include "logger.h" /* for logging information */
 
 #define HTML_BEFORE_BODY         \
@@ -59,7 +64,6 @@ static const struct table_entry {
     {NULL, NULL},
 };
 
-
 static struct options parse_opts(int argc, char** argv);
 static void print_usage(FILE* out, const char* prog, int exit_code);
 static void do_term(int sig, short events, void* arg);
@@ -68,6 +72,9 @@ static const char* guess_content_type(const char* path);
 static int display_listen_sock(struct evhttp_bound_socket* handle);
 static int handle_post_cb(struct evhttp_request* req, char* whole_path);
 static void handle_request_cb(struct evhttp_request* req, void* arg);
+
+void die_most_horribly_from_openssl_error (const char *func);
+static struct bufferevent* bevcb(struct event_base* base, void* arg);
 
 /* Try to guess a good content-type for 'path' */
 static const char* guess_content_type(const char* path) {
@@ -440,6 +447,38 @@ done:
         free(whole_path);
     if (evb)
         evbuffer_free(evb);
+}
+
+/**
+ * This callback is responsible for creating a new SSL connection
+ * and wrapping it in an OpenSSL bufferevent.  This is the way
+ * we implement an https server instead of a plain old http server.
+ */
+static struct bufferevent* bevcb(struct event_base* base, void* arg) {
+    struct bufferevent* bev;
+    SSL_CTX *server_ctx;
+    SSL *client_ctx;
+
+    server_ctx = (SSL_CTX *)arg;
+    client_ctx = SSL_new(server_ctx);
+
+    bev = bufferevent_openssl_socket_new(base, -1, client_ctx,
+                                         BUFFEREVENT_SSL_ACCEPTING,
+                                         BEV_OPT_CLOSE_ON_FREE|BEV_OPT_DEFER_CALLBACKS);
+    // bufferevent_enable(bev, EV_READ);
+    logger(DEBUG, "openssl socket evbuffer created");
+    return bev;
+}
+
+void die_most_horribly_from_openssl_error (const char *func)
+{ 
+    logger (ERROR, "%s failed:\n", func);
+
+    /* This is the OpenSSL function that prints the contents of the
+     * error stack to the specified file handle. */
+    ERR_print_errors_fp (stderr);
+
+    exit (EXIT_FAILURE);
 }
 
 #endif
