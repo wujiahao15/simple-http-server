@@ -449,12 +449,9 @@ static void handle_request_cb(struct evhttp_request* req, void* arg) {
             size_t bytesLeft = file_size - offset;
             size_t bytesToRead =
                 bytesLeft > CHUNK_SIZE ? CHUNK_SIZE : bytesLeft;
-            if (bytesToRead != read(fd, tmp, bytesToRead)) {
-                logger(ERROR, "Read file error!");
-                return NULL;
-            }
-            lseek(fd, bytesToRead, SEEK_CUR);
+            read(fd, tmp, bytesToRead);
             offset += bytesToRead;
+            lseek(fd, offset, SEEK_SET);
             send_data_by_chunk(req, evb, tmp, strlen(tmp));
         }
         // evbuffer_add_file(evb, fd, 0, st.st_size);
