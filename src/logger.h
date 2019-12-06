@@ -1,19 +1,31 @@
 #ifndef __LOG_H__
 #define __LOG_H__
 
+/**
+ * @file logger.h
+ * @brief File that logs information of INFO, DEBUG and ERROR.
+ * @author Wu Jiahao
+ * @version evhttp-version
+ * @date 2019/12/06
+ */
+
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
 
 #define LOG_DEBUG
 
+/// logger level (DEBUG, INFO, WARNING and ERROR)
 enum log_level { DEBUG = 0, INFO, WARNING, ERROR };
 
+/// default logger level
 static enum log_level this_log_level = DEBUG;
 
+/// logger level string corresponding to their enum
 static const char* log_level_str[] = {"DEBUG", "INFO", "WARNING", "ERROR"};
 
 #ifdef LOG_DEBUG
+/// logger core function
 #define log_it(output, fmt, level_str, ...)                                 \
     fprintf(output, "[%s:%u] %s: " fmt "\n", __FILE__, __LINE__, level_str, \
             ##__VA_ARGS__);
@@ -24,6 +36,7 @@ static const char* log_level_str[] = {"DEBUG", "INFO", "WARNING", "ERROR"};
     }
 #endif
 
+/// logger main function
 #define logger(level, fmt, ...)                                       \
     do {                                                              \
         if (level == ERROR)                                           \
