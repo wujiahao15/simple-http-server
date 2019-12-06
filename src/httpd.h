@@ -453,6 +453,7 @@ static void handle_request_cb(struct evhttp_request* req, void* arg) {
             size_t bytesLeft = file_size - offset;
             size_t bytesToRead =
                 bytesLeft > CHUNK_SIZE ? CHUNK_SIZE : bytesLeft;
+            evb = evbuffer_new();
             evb_fs = evbuffer_file_segment_new(fd, offset, bytesToRead, 0);
             evbuffer_add_file_segment(evb, evb_fs, 0, bytesToRead);
             evbuffer_file_segment_free(evb_fs);
@@ -461,6 +462,7 @@ static void handle_request_cb(struct evhttp_request* req, void* arg) {
             offset += bytesToRead;
             // lseek(fd, offset, SEEK_SET);
             logger(DEBUG, "%d data sent.", (int)offset);
+            evbuffer_free(evb);
             // send_data_by_chunk(req, evb, tmp, strlen(tmp));
         }
         close(fd);
