@@ -61,3 +61,5 @@ Mkfile.old
 dkms.conf
 .vscode/settings.json
 tests/
+latex/
+html/
