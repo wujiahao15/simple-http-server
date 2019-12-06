@@ -326,6 +326,7 @@ static void handle_request_cb(struct evhttp_request* req, void* arg) {
     int fd = -1;
     struct options* opt = (struct options*)arg;
     struct evbuffer* evb = NULL;
+    struct evbuffer_file_segment* evb_fs = NULL;
     char* whole_path = NULL;
     char* decoded_path = NULL;
     const char* uri = NULL;
@@ -410,7 +411,8 @@ static void handle_request_cb(struct evhttp_request* req, void* arg) {
         evhttp_add_header(evhttp_request_get_output_headers(req),
                           "Content-Type", "text/html");
 
-        evhttp_send_reply_start(req, HTTP_OK, "Start to send directory.");
+        evhttp_send_reply_start(req, HTTP_OK,
+                                "Start to send directory by chunk.");
 
         sprintf(tmp, HTML_BEFORE_BODY, decoded_path, path, trailing_slash,
                 decoded_path);
@@ -446,18 +448,22 @@ static void handle_request_cb(struct evhttp_request* req, void* arg) {
         logger(DEBUG, "File size: %d", (int)file_size);
         evhttp_add_header(evhttp_request_get_output_headers(req),
                           "Content-Type", type);
-        evhttp_send_reply_start(req, HTTP_OK, "Start to send directory.");
+        evhttp_send_reply_start(req, HTTP_OK, "Start to send file by chunk.");
         for (off_t offset = 0; offset < file_size;) {
             size_t bytesLeft = file_size - offset;
             size_t bytesToRead =
                 bytesLeft > CHUNK_SIZE ? CHUNK_SIZE : bytesLeft;
-            read(fd, tmp, bytesToRead);
+            evb_fs = evbuffer_file_segment_new(fd, offset, bytesToRead, 0);
+            evbuffer_add_file_segment(evb, evb_fs, 0, -1);
+            evbuffer_file_segment_free(evb_fs);
+            // read(fd, tmp, bytesToRead);
+            // evbuffer_add_file(evb, fd, offset, bytesToRead);
             offset += bytesToRead;
-            lseek(fd, offset, SEEK_SET);
+            // lseek(fd, offset, SEEK_SET);
             logger(DEBUG, "%d data sent.", (int)offset);
-            send_data_by_chunk(req, evb, tmp, strlen(tmp));
+            // send_data_by_chunk(req, evb, tmp, strlen(tmp));
         }
-        // evbuffer_add_file(evb, fd, 0, st.st_size);
+        close(fd);
     }
 
     evhttp_send_reply_end(req);
