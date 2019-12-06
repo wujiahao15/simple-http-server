@@ -68,13 +68,23 @@ static const struct table_entry {
 static struct options parse_opts(int argc, char** argv);
 static void print_usage(FILE* out, const char* prog, int exit_code);
 static void do_term(int sig, short events, void* arg);
+static int display_listen_sock(struct evhttp_bound_socket* handle);
 
 static const char* guess_content_type(const char* path);
-static int display_listen_sock(struct evhttp_bound_socket* handle);
-static int handle_post_cb(struct evhttp_request* req, char* whole_path);
+const char* get_req_method_str(struct evhttp_request* req);
+static int get_line_from_evbuffer(struct evbuffer* buffer, char* buf);
 static void handle_request_cb(struct evhttp_request* req, void* arg);
+static int handle_post_helper(struct evhttp_request* req, char* whole_path);
+static int handle_get_helper(struct evhttp_request* req,
+                             const char* path,
+                             char* whole_path,
+                             char* decoded_path);
+void send_data_by_chunk(struct evhttp_request* req, char* data, int len);
+void send_file_by_chunk(struct evhttp_request* req,
+                        int fd,
+                        int64_t offset,
+                        int64_t len);
 
-void die_most_horribly_from_openssl_error(const char* func);
 static struct bufferevent* bevcb(struct event_base* base, void* arg);
 
 /* Try to guess a good content-type for 'path' */
@@ -105,7 +115,7 @@ static struct options parse_opts(int argc, char** argv) {
     struct options o;
     memset(&o, 0, sizeof(o));
 
-    while ((opt = getopt(argc, argv, "p::h")) != -1) {
+    while ((opt = getopt(argc, argv, "p:h")) != -1) {
         switch (opt) {
             case 'p':
                 o.port = atoi(optarg);
@@ -141,7 +151,7 @@ static int display_listen_sock(struct evhttp_bound_socket* handle) {
     evutil_socket_t fd;
     struct sockaddr_storage ss;
     ev_socklen_t socklen = sizeof(ss);
-    char addrbuf[128];
+    char addrbuf[128] = {};
     void* inaddr;
     const char* addr;
     int got_port = -1;
@@ -167,9 +177,9 @@ static int display_listen_sock(struct evhttp_bound_socket* handle) {
 
     addr = evutil_inet_ntop(ss.ss_family, inaddr, addrbuf, sizeof(addrbuf));
     if (addr) {
-        logger(DEBUG, "Listening on %s:%d", addr, got_port);
-        evutil_snprintf(uri_root, sizeof(uri_root), "http://%s:%d", addr,
+        evutil_snprintf(uri_root, sizeof(uri_root), "https://%s:%d", addr,
                         got_port);
+        logger(INFO, "Please visit %s", uri_root);
     } else {
         logger(ERROR, "evutil_inet_ntop failed\n");
         return 1;
@@ -178,7 +188,7 @@ static int display_listen_sock(struct evhttp_bound_socket* handle) {
     return 0;
 }
 
-int get_line_from_evbuffer(struct evbuffer* buffer, char* buf) {
+static int get_line_from_evbuffer(struct evbuffer* buffer, char* buf) {
     int ret = 0, i = 0, is_a_line = 0;
     char c = '\0', c_b = '\0';
 
@@ -205,7 +215,7 @@ int get_line_from_evbuffer(struct evbuffer* buffer, char* buf) {
     return (i + is_a_line);
 }
 
-static int handle_post_cb(struct evhttp_request* req, char* whole_path) {
+static int handle_post_helper(struct evhttp_request* req, char* whole_path) {
     char cbuf[MAX_LINE_LEN] = {};
     char bound_begin[128] = {};
     char bound_end[128] = {};
@@ -239,10 +249,11 @@ static int handle_post_cb(struct evhttp_request* req, char* whole_path) {
     /* Get content body */
     if (!(fp = fopen(whole_path, "w"))) {
         logger(ERROR, "Error open file to write in POST");
+        evhttp_send_error(req, HTTP_INTERNAL,
+                          "Writing post file to given path failed.");
         return -1;
     }
     buf = evhttp_request_get_input_buffer(req);
-    //  && evbuffer_get_length(buf)
     while (total != content_length) {
         memset(cbuf, 0, MAX_LINE_LEN);
         received = get_line_from_evbuffer(buf, cbuf);
@@ -253,7 +264,7 @@ static int handle_post_cb(struct evhttp_request* req, char* whole_path) {
                 cbuf[strlen(cbuf) - 1] = '\0';
             fputs(cbuf, fp);
             cbuf[strlen(cbuf) - 1] = '\0';
-            logger(DEBUG, "tofile: %s", cbuf);
+            // logger(DEBUG, "tofile: %s", cbuf);
             continue;
         }
         // logger(DEBUG, "line: %s", cbuf);
@@ -268,7 +279,7 @@ static int handle_post_cb(struct evhttp_request* req, char* whole_path) {
             logger(DEBUG, "Data Length: %d", data_left);
         }
     }
-    evhttp_send_reply(req, 200, "OK", NULL);
+    evhttp_send_reply(req, HTTP_OK, "OK", NULL);
     fclose(fp);
     return 0;
 }
@@ -312,40 +323,139 @@ const char* get_req_method_str(struct evhttp_request* req) {
     return cmd_type;
 }
 
-void send_data_by_chunk(struct evhttp_request* req,
-                        struct evbuffer* evb,
-                        char* data,
-                        int len) {
-    evb = evbuffer_new();
+void send_data_by_chunk(struct evhttp_request* req, char* data, int len) {
+    struct evbuffer* evb = evbuffer_new();
     evbuffer_add(evb, data, len);
     evhttp_send_reply_chunk(req, evb);
     evbuffer_free(evb);
 }
 
+void send_file_by_chunk(struct evhttp_request* req,
+                        int fd,
+                        int64_t offset,
+                        int64_t len) {
+    struct evbuffer* evb = evbuffer_new();
+    struct evbuffer_file_segment* evb_fs =
+        evbuffer_file_segment_new(fd, offset, len, 0);
+    evbuffer_add_file_segment(evb, evb_fs, 0, len);
+    evhttp_send_reply_chunk(req, evb);
+    evbuffer_file_segment_free(evb_fs);
+    evbuffer_free(evb);
+}
+
+static int handle_get_helper(struct evhttp_request* req,
+                             const char* path,
+                             char* whole_path,
+                             char* decoded_path) {
+    int fd = -1;
+    /* Below is GET handler*/
+    struct stat st;
+    if (stat(whole_path, &st) < 0) {
+        goto not_found;
+    }
+
+    /* This holds the content we're sending. */
+    if (S_ISDIR(st.st_mode)) {
+        /* If it's a directory, read the comments and make a little
+         * index page */
+        DIR* d;
+        struct dirent* ent;
+        char tmp[MAX_LINE_LEN];
+        const char* trailing_slash = "";
+
+        if (!strlen(path) || path[strlen(path) - 1] != '/')
+            trailing_slash = "/";
+
+        if (!(d = opendir(whole_path)))
+            goto not_found;
+
+        evhttp_add_header(evhttp_request_get_output_headers(req),
+                          "Content-Type", "text/html");
+
+        evhttp_send_reply_start(req, HTTP_OK,
+                                "Start to send directory by chunk.");
+
+        sprintf(tmp, HTML_BEFORE_BODY, decoded_path, path, trailing_slash,
+                decoded_path);
+        send_data_by_chunk(req, tmp, strlen(tmp));
+
+        while ((ent = readdir(d))) {
+            const char* name = ent->d_name;
+            if (evutil_ascii_strcasecmp(name, ".") &&
+                evutil_ascii_strcasecmp(name, "..")) {
+                sprintf(tmp, "    <li><a href=\"%s\">%s</a>\n", name, name);
+                send_data_by_chunk(req, tmp, strlen(tmp));
+            }
+        }
+        sprintf(tmp, "</ul></body></html>\n");
+        send_data_by_chunk(req, tmp, strlen(tmp));
+
+        closedir(d);
+    } else {
+        /* Otherwise it's a file; add it to the buffer to get
+         * sent via sendfile */
+        const char* type = guess_content_type(decoded_path);
+
+        if ((fd = open(whole_path, O_RDONLY)) < 0) {
+            perror("open");
+            goto not_found;
+        }
+
+        if (fstat(fd, &st) < 0) {
+            /* Make sure the length still matches, now that we
+             * opened the file :/ */
+            perror("fstat");
+            goto not_found;
+        }
+
+        size_t file_size = st.st_size;
+        logger(DEBUG, "File size: %d", (int)file_size);
+        evhttp_add_header(evhttp_request_get_output_headers(req),
+                          "Content-Type", type);
+        evhttp_send_reply_start(req, HTTP_OK, "Start to send file by chunk.");
+        for (off_t offset = 0; offset < file_size;) {
+            size_t bytesLeft = file_size - offset;
+            size_t bytesToRead =
+                bytesLeft > CHUNK_SIZE ? CHUNK_SIZE : bytesLeft;
+            send_file_by_chunk(req, fd, offset, bytesToRead);
+            offset += bytesToRead;
+            logger(DEBUG, "%d data sent.", (int)offset);
+        }
+        close(fd);
+    }
+
+    evhttp_send_reply_end(req);
+    logger(DEBUG, "Chunk reply end sent.");
+    return 0;
+
+not_found:
+    evhttp_send_error(req, HTTP_NOTFOUND, "Document was not found");
+    logger(ERROR, "404 Not Found.");
+    return 1;
+}
+
 static void handle_request_cb(struct evhttp_request* req, void* arg) {
     int fd = -1;
     struct options* opt = (struct options*)arg;
-    struct evbuffer* evb = NULL;
-    struct evbuffer_file_segment* evb_fs = NULL;
     char* whole_path = NULL;
     char* decoded_path = NULL;
     const char* uri = NULL;
     const char* path = NULL;
 
-    // if ((evhttp_request_get_command(req) != EVHTTP_REQ_POST) &&
-    //     (evhttp_request_get_command(req) != EVHTTP_REQ_GET)) {
-    //     evhttp_send_error(req, HTTP_NOTIMPLEMENTED, 0);
-    //     goto done;
-    // }
     /* Handling request starts. */
     const char* type = get_req_method_str(req);
+    if (!evutil_ascii_strcasecmp(type, "unknown")) {
+        logger(ERROR, "method not allowed for this uri");
+        evhttp_send_error(req, HTTP_BADMETHOD, 0);
+        return;
+    }
     uri = evhttp_request_get_uri(req);
     logger(DEBUG, "Got a <%s> request for <%s>", type, uri);
 
     /* Decode the URI */
     struct evhttp_uri* decoded = evhttp_uri_parse(uri);
     if (!decoded) {
-        logger(DEBUG, "It's not a good URI. Sending BADREQUEST");
+        logger(ERROR, "It's not a good URI. Sending BADREQUEST");
         evhttp_send_error(req, HTTP_BADREQUEST, 0);
         return;
     }
@@ -380,94 +490,18 @@ static void handle_request_cb(struct evhttp_request* req, void* arg) {
                     decoded_path + offset);
     logger(DEBUG, "whole path: %s", whole_path);
 
+    // Call the respective handler for GET or POST requests
     if (evhttp_request_get_command(req) == EVHTTP_REQ_POST) {
-        if (!handle_post_cb(req, whole_path))
-            goto done;
-        else
-            goto err;
-    }
-
-    /* Below is GET handler*/
-    struct stat st;
-    if (stat(whole_path, &st) < 0) {
-        goto err;
-    }
-
-    char tmp[MAX_LINE_LEN];
-    /* This holds the content we're sending. */
-    if (S_ISDIR(st.st_mode)) {
-        /* If it's a directory, read the comments and make a little
-         * index page */
-        DIR* d;
-        struct dirent* ent;
-        const char* trailing_slash = "";
-
-        if (!strlen(path) || path[strlen(path) - 1] != '/')
-            trailing_slash = "/";
-
-        if (!(d = opendir(whole_path)))
-            goto err;
-
-        evhttp_add_header(evhttp_request_get_output_headers(req),
-                          "Content-Type", "text/html");
-
-        evhttp_send_reply_start(req, HTTP_OK,
-                                "Start to send directory by chunk.");
-
-        sprintf(tmp, HTML_BEFORE_BODY, decoded_path, path, trailing_slash,
-                decoded_path);
-        send_data_by_chunk(req, evb, tmp, strlen(tmp));
-
-        while ((ent = readdir(d))) {
-            const char* name = ent->d_name;
-            sprintf(tmp, "    <li><a href=\"%s\">%s</a>\n", name, name);
-            send_data_by_chunk(req, evb, tmp, strlen(tmp));
-        }
-        sprintf(tmp, "</ul></body></html>\n");
-        send_data_by_chunk(req, evb, tmp, strlen(tmp));
-
-        closedir(d);
+        handle_post_helper(req, whole_path);
+    } else if (evhttp_request_get_command(req) == EVHTTP_REQ_GET) {
+        handle_get_helper(req, path, whole_path, decoded_path);
     } else {
-        /* Otherwise it's a file; add it to the buffer to get
-         * sent via sendfile */
-        const char* type = guess_content_type(decoded_path);
-
-        if ((fd = open(whole_path, O_RDONLY)) < 0) {
-            perror("open");
-            goto err;
-        }
-
-        if (fstat(fd, &st) < 0) {
-            /* Make sure the length still matches, now that we
-             * opened the file :/ */
-            perror("fstat");
-            goto err;
-        }
-
-        size_t file_size = st.st_size;
-        logger(DEBUG, "File size: %d", (int)file_size);
-        evhttp_add_header(evhttp_request_get_output_headers(req),
-                          "Content-Type", type);
-        evhttp_send_reply_start(req, HTTP_OK, "Start to send file by chunk.");
-        for (off_t offset = 0; offset < file_size;) {
-            size_t bytesLeft = file_size - offset;
-            size_t bytesToRead =
-                bytesLeft > CHUNK_SIZE ? CHUNK_SIZE : bytesLeft;
-            evb = evbuffer_new();
-            evb_fs = evbuffer_file_segment_new(fd, offset, bytesToRead, 0);
-            evbuffer_add_file_segment(evb, evb_fs, 0, bytesToRead);
-            evhttp_send_reply_chunk(req, evb);
-            evbuffer_file_segment_free(evb_fs);
-            logger(DEBUG, "%d data sent.", (int)offset);
-            evbuffer_free(evb);
-            offset += bytesToRead;
-        }
-        close(fd);
+        evhttp_send_error(req, HTTP_NOTIMPLEMENTED,
+                          "Method not implemented: we only handle simple <GET> "
+                          "& <POST> request for upload and download file.");
     }
-
-    evhttp_send_reply_end(req);
-    logger(DEBUG, "Chunk reply end sent.");
     goto done;
+
 err:
     evhttp_send_error(req, 404, "Document was not found");
     if (fd >= 0)
@@ -500,16 +534,6 @@ static struct bufferevent* bevcb(struct event_base* base, void* arg) {
     // bufferevent_enable(bev, EV_READ);
     logger(DEBUG, "openssl socket evbuffer created");
     return bev;
-}
-
-void die_most_horribly_from_openssl_error(const char* func) {
-    logger(ERROR, "%s failed:\n", func);
-
-    /* This is the OpenSSL function that prints the contents of the
-     * error stack to the specified file handle. */
-    ERR_print_errors_fp(stderr);
-
-    exit(EXIT_FAILURE);
 }
 
 #endif

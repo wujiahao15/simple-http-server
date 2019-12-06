@@ -5,9 +5,9 @@ static SSL_CTX* evssl_init(void) {
 
     /* Initialize the OpenSSL library */
     SSL_library_init();
-	ERR_load_crypto_strings();
-	SSL_load_error_strings();
-	OpenSSL_add_all_algorithms();
+    ERR_load_crypto_strings();
+    SSL_load_error_strings();
+    OpenSSL_add_all_algorithms();
     /* We MUST have entropy, or else there's no point to crypto. */
     if (!RAND_poll())
         return NULL;
@@ -17,7 +17,7 @@ static SSL_CTX* evssl_init(void) {
         logger(ERROR, "Couldn't create server context.");
         return NULL;
     }
-    SSL_CTX_set_verify(server_ctx, SSL_VERIFY_NONE, NULL); 
+    SSL_CTX_set_verify(server_ctx, SSL_VERIFY_NONE, NULL);
     if (!SSL_CTX_use_certificate_chain_file(server_ctx, "cert") ||
         !SSL_CTX_use_PrivateKey_file(server_ctx, "pkey", SSL_FILETYPE_PEM)) {
         puts(
@@ -40,8 +40,7 @@ int main(int argc, char* argv[]) {
     struct event* term = NULL;
 
     // parse options from command line
-    //struct options opt = parse_opts(argc, argv);
-    struct options opt = {.port = 12306, .docroot="htdocs"};
+    struct options opt = parse_opts(argc, argv);
     // create event config
     struct event_config* cfg = event_config_new();
     struct event_base* base = event_base_new_with_config(cfg);
